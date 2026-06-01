@@ -1,0 +1,15 @@
+# Build output
+dist/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Your private config + keys (never commit these)
+config.json
+config.jsonc
+ccmodel.env
+
+# Logs / state
+*.log
+.DS_Store

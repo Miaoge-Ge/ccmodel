@@ -1,0 +1,48 @@
+{
+  "name": "ccmodel",
+  "version": "1.0.0",
+  "description": "Run Claude Code's UltraCode mode — and a reliable [1m] 1M-context — on any model you already pay for. A tiny loopback proxy for the /model picker.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "ccmodel": "bin/ccmodel.mjs",
+    "ccmodel-proxy": "dist/src/main.js",
+    "ccmodel-doctor": "dist/scripts/doctor.js"
+  },
+  "files": [
+    "dist/src",
+    "bin/ccmodel.mjs",
+    "scripts/install-icons.mjs",
+    "scripts/uninstall.mjs",
+    "config.example.jsonc",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "launch": "node bin/ccmodel.mjs",
+    "proxy": "node dist/src/main.js",
+    "icons": "node scripts/install-icons.mjs",
+    "uninstall": "node scripts/uninstall.mjs",
+    "doctor": "node dist/scripts/doctor.js",
+    "test": "tsc && node --test \"dist/test/**/*.test.js\"",
+    "prepare": "tsc"
+  },
+  "keywords": [
+    "claude-code",
+    "ultracode",
+    "anthropic",
+    "proxy",
+    "1m-context",
+    "openai-compatible",
+    "llm-gateway"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

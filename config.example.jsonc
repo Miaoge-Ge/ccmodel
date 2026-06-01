@@ -1,0 +1,130 @@
+{
+  // ─────────────────────────────────────────────────────────────────────────
+  // Copy this file to config.jsonc (or config.json) and edit THAT — it is
+  // gitignored so your keys never get committed. This is JSONC: // and /* */
+  // comments and trailing commas are allowed. Keys starting with "_" are also
+  // ignored too — handy for inline notes next to a value.
+  //
+  // Keep only the models you have a plan/key for; delete the rest.
+  // Full guide: README.md + docs/ADD_A_MODEL.md.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  "proxy": {
+    // Local port the proxy listens on (the launchers point Claude Code here).
+    "listen_port": 8141,
+    // Where the real Anthropic API lives. Don't change unless you know why.
+    "anthropic_upstream": "https://api.anthropic.com",
+    // UltraCode raises every request to at least this many max_tokens (output).
+    "max_tokens_floor": 64000,
+
+    // ── 1M context ──────────────────────────────────────────────────────────
+    // Auto-advertise a "<id>[1m]" companion in the /model picker for every model
+    // below. Picking the [1m] variant GUARANTEES a 1M context window:
+    //   • Anthropic passthrough  → the proxy injects the beta header
+    //                              `anthropic-beta: context-1m-2025-08-07`
+    //                              (even if Claude Code dropped it on the way in)
+    //   • openai_compat backends → forwarded to the backend's native 1M context
+    // Set false to hide the variants, or use per-model "context_1m" below.
+    "advertise_1m_variants": true
+
+    // "force_1m": true   // ← make EVERY request 1M, no [1m] pick needed
+                          //    (only if every backend you route to supports it)
+  },
+
+  // What shows in Claude Code's /model picker. id MUST start with "claude" or
+  // "anthropic" (others are silently dropped). With advertise_1m_variants on,
+  // each gets a "<id>[1m]" sibling automatically.
+  "models": [
+    { "id": "claude-opus-4-8",          "display_name": "Opus 4.8 (real Claude)" },
+    { "id": "claude-sonnet-4-6",        "display_name": "Sonnet 4.6 (real Claude)" },
+    { "id": "claude-gpt-5.5-codex",     "display_name": "GPT-5.5 (Codex OAuth)" },
+
+    // MiniMax-M3 natively supports ~1M context, so force its [1m] variant on.
+    { "id": "claude-minimax-m3",        "display_name": "MiniMax-M3", "context_1m": true },
+
+    { "id": "claude-mimo",              "display_name": "MiMo v2.5 Pro" },
+    { "id": "claude-deepseek-v4-flash", "display_name": "DeepSeek V4 Flash" },
+    { "id": "claude-deepseek-v4-pro",   "display_name": "DeepSeek V4 Pro" },
+    { "id": "claude-openrouter",        "display_name": "Llama 3.3 70B (OpenRouter)" },
+    { "id": "claude-local",             "display_name": "Local model" },
+    { "id": "claude-composer",          "display_name": "Composer 2.5 (Cursor, experimental)" }
+  ],
+
+  // Where each model id above goes. The key MUST match an id in "models" (or be
+  // the base id of a "<id>[1m]" pick — the proxy strips the suffix before
+  // routing). Put your API key inline (gitignored) or use ${ENV_VAR}.
+  "routes": {
+    // Real Claude with the full UltraCode envelope. Picking "Opus 4.8 [1m]"
+    // adds the 1M beta header. (On Opus 4.6+/Sonnet 4.6 it's the default and the
+    // header is simply redundant-but-accepted, so this is always safe.)
+    "claude-opus-4-8": {
+      "model": "claude-opus-4-8",
+      "auth": "passthrough"
+    },
+    "claude-sonnet-4-6": {
+      "model": "claude-sonnet-4-6",
+      "auth": "passthrough"
+    },
+
+    // GPT-5.5 via a ChatGPT/Codex login (no API key). Run `codex login` once.
+    "claude-gpt-5.5-codex": {
+      "type": "codex_oauth",
+      "model": "gpt-5.5"
+    },
+
+    // MiniMax-M3 (OpenAI-compatible). "reasoning_split" keeps M3's <think>
+    // chain-of-thought OUT of the visible answer. context_1m:"force" means every
+    // request to this route uses 1M (M3 supports it natively). Key at
+    // platform.minimax.io.
+    "claude-minimax-m3": {
+      "type": "openai_compat",
+      "upstream": "https://api.minimax.io/v1",
+      "model": "MiniMax-M3",
+      "auth": "Bearer ${MINIMAX_API_KEY}",
+      "max_output_tokens": 64000,
+      "context_1m": "force",
+      "body": { "reasoning_split": true }
+    },
+
+    "claude-mimo": {
+      "type": "openai_compat",
+      "upstream": "https://token-plan-sgp.xiaomimimo.com/v1",
+      "model": "mimo-v2.5-pro",
+      "auth": "Bearer ${MIMO_API_KEY}"
+    },
+    // DeepSeek ships a native Anthropic-compatible endpoint (/anthropic), so
+    // these are PASSTHROUGH routes (no "type") — tools, streaming and the model's
+    // <thinking> blocks all work natively. Verified live with deepseek-v4-flash
+    // and deepseek-v4-pro. The /anthropic endpoint accepts the key as a Bearer
+    // token. Get a key at platform.deepseek.com.
+    "claude-deepseek-v4-flash": {
+      "upstream": "https://api.deepseek.com/anthropic",
+      "model": "deepseek-v4-flash",
+      "auth": "Bearer ${DEEPSEEK_API_KEY}"
+    },
+    "claude-deepseek-v4-pro": {
+      "upstream": "https://api.deepseek.com/anthropic",
+      "model": "deepseek-v4-pro",
+      "auth": "Bearer ${DEEPSEEK_API_KEY}"
+    },
+    "claude-openrouter": {
+      "type": "openai_compat",
+      "upstream": "https://openrouter.ai/api/v1",
+      "model": "meta-llama/llama-3.3-70b-instruct",
+      "auth": "Bearer ${OPENROUTER_API_KEY}"
+    },
+    // A local OpenAI-compatible server (Ollama :11434, llama.cpp :8080, LM Studio
+    // :1234). The key is usually ignored.
+    "claude-local": {
+      "type": "openai_compat",
+      "upstream": "http://127.0.0.1:11434/v1",
+      "model": "your-local-model",
+      "auth": "Bearer local"
+    },
+    // EXPERIMENTAL. Cursor Composer via the cursor-agent CLI (`cursor-agent login`).
+    "claude-composer": {
+      "type": "cursor_agent",
+      "model": "composer-2.5"
+    }
+  }
+}
