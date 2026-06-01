@@ -7,7 +7,7 @@
  *   { type: "usage", input_tokens, output_tokens }
  *   { type: "error", message, status }
  */
-import type { InternalEvent } from "./types.js";
+import type { InternalEvent } from "../config/types.js";
 import type { UpstreamResponse } from "./http.js";
 
 /** Format one Anthropic SSE frame. */
@@ -125,12 +125,10 @@ export async function* oaiResponseToEvents(resp: UpstreamResponse): AsyncGenerat
   for (const tc of toolCalls) {
     if (!isRecord(tc)) continue;
     const fn = isRecord(tc.function) ? (tc.function as Json) : {};
-    yield {
-      type: "tool_call",
-      id: typeof tc.id === "string" ? tc.id : "",
-      name: typeof fn.name === "string" ? fn.name : "",
-      arguments: typeof fn.arguments === "string" ? fn.arguments : "{}",
-    };
+    const name = typeof fn.name === "string" ? fn.name : "";
+    const rawArgs = typeof fn.arguments === "string" ? fn.arguments : "";
+    if (!name && !rawArgs) continue; // skip empty tool_calls (matches the streaming path)
+    yield { type: "tool_call", id: typeof tc.id === "string" ? tc.id : "", name, arguments: rawArgs || "{}" };
   }
   const usage = isRecord(oai.usage) ? (oai.usage as Json) : {};
   yield {

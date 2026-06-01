@@ -8,16 +8,18 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer as createMock, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { AddressInfo } from "node:net";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 import { createServer, type ProxyContext } from "../src/server.js";
-import { normalizeModels, stripJsonc, slug, inferType, wrapAuth } from "../src/config.js";
-import { expandModels } from "../src/models.js";
-import { parseModelId, ensure1mBetaHeader, headerRequests1m, CONTEXT_1M_BETA } from "../src/model1m.js";
-import { transformMessagesBody, type EnvelopeSettings } from "../src/envelope.js";
-import { anthropicToOpenai } from "../src/translate.js";
+import { normalizeModels, stripJsonc, slug, inferType, wrapAuth, REPO_ROOT } from "../src/config/config.js";
+import { expandModels } from "../src/pipeline/models.js";
+import { parseModelId, ensure1mBetaHeader, headerRequests1m, CONTEXT_1M_BETA } from "../src/pipeline/model1m.js";
+import { transformMessagesBody, type EnvelopeSettings } from "../src/pipeline/envelope.js";
+import { anthropicToOpenai } from "../src/pipeline/translate.js";
 import { resolveProvider, registeredTypes } from "../src/providers/registry.js";
-import { validateConfig } from "../src/validate.js";
-import type { Config } from "../src/types.js";
+import { validateConfig } from "../src/config/validate.js";
+import type { Config } from "../src/config/types.js";
 
 const SETTINGS: EnvelopeSettings = { forceEffort: "xhigh", forceThinking: true, maxTokensFloor: 64000, injectReminder: true, force1m: false };
 
@@ -107,7 +109,7 @@ function listen(server: Server): Promise<number> {
 function buildCtx(cfg: Config, upstream: string): ProxyContext {
   const settings: EnvelopeSettings = { forceEffort: "xhigh", forceThinking: true, maxTokensFloor: Number(cfg.max_tokens) || 64000, injectReminder: true, force1m: cfg.force_1m === true };
   const { slotMap, models } = normalizeModels(cfg.models);
-  return { upstream, settings, slotMap, modelMap: {}, discoveryModels: expandModels(models, true), customModels: models };
+  return { upstream, settings, slotMap, modelMap: {}, discoveryModels: expandModels(models) };
 }
 
 before(async () => {
@@ -120,10 +122,11 @@ before(async () => {
     upstream: mockBase,
     max_tokens: 64000,
     models: [
-      { name: "Opus", id: "claude-opus-4-8", api: "anthropic", model: "claude-opus-4-8" },
+      { name: "Opus", id: "claude-opus-4-8", api: "anthropic", model: "claude-opus-4-8", "1m": true },
       { name: "MiniMax", id: "claude-minimax-m3", api: "openai", url: mockBase + "/v1", model: "MiniMax-M3", key: "${MOCK_KEY}", max_output_tokens: 64000, "1m": "force", body: { reasoning_split: true } },
       { name: "Mock", id: "claude-mock", api: "openai", url: mockBase + "/v1", model: "mock-model", key: "${MOCK_KEY}", max_output_tokens: 1234, headers: { "X-Test-UA": "ccmodel/test" }, body: { reasoning_split: true }, "1m": false },
       { name: "Retry", id: "claude-retry", api: "openai", url: mockBase + "/v1", model: "retry-model", key: "${MOCK_KEY}" },
+      { name: "NoKey", id: "claude-nokey", api: "openai", url: mockBase + "/v1", model: "nokey-model" },
     ],
   };
   proxyServer = createServer(buildCtx(cfg, mockBase));
@@ -175,6 +178,13 @@ test("normalizeModels infers id, type and auth from minimal entries", () => {
   assert.equal(slotMap["claude-deepseek-v4-pro"]!.upstream, "https://api.deepseek.com/anthropic");
 });
 
+test("REPO_ROOT resolves to the repo root, not dist/", () => {
+  // Guards against a regression if config.ts moves: defaultConfigPath() and the
+  // doctor both rely on REPO_ROOT pointing at the actual repo root.
+  assert.ok(existsSync(join(REPO_ROOT, "package.json")), "package.json should exist at REPO_ROOT");
+  assert.ok(!/[\\/]dist$/.test(REPO_ROOT), "REPO_ROOT must not be the dist/ folder");
+});
+
 test("config helpers (slug/inferType/wrapAuth)", () => {
   assert.equal(slug("DeepSeek V4 Pro"), "deepseek-v4-pro");
   assert.equal(slug("GPT-5.5"), "gpt-5-5");
@@ -213,16 +223,16 @@ test("stripJsonc removes comments and trailing commas but not string contents", 
   assert.deepEqual(obj.arr, [1, 2]);
 });
 
-test("expandModels generates [1m] variants per policy", () => {
-  const { models } = normalizeModels([{ name: "A" }, { name: "B", "1m": "force" }, { name: "C", "1m": false }]);
-  const ids = expandModels(models, true).map((m) => m.id);
-  assert.ok(ids.includes("claude-a"));
-  assert.ok(ids.includes("claude-a[1m]"));
-  assert.ok(ids.includes("claude-b[1m]"));
-  assert.ok(!ids.includes("claude-b"), "force advertises only the [1m] variant");
-  assert.ok(ids.includes("claude-c"));
-  assert.ok(!ids.includes("claude-c[1m]"), "1m:false opts out");
-  assert.equal(expandModels(models, true).find((m) => m.id === "claude-a[1m]")!.context_window, 1_000_000);
+test("expandModels: 1M is opt-in (true → base+[1m], force → [1m] only, else base only)", () => {
+  const { models } = normalizeModels([{ name: "A" }, { name: "B", "1m": "force" }, { name: "C", "1m": false }, { name: "D", "1m": true }]);
+  const all = expandModels(models);
+  const ids = all.map((m) => m.id);
+  assert.ok(ids.includes("claude-a") && !ids.includes("claude-a[1m]"), "no 1m flag → base only (no variant)");
+  assert.ok(ids.includes("claude-b[1m]") && !ids.includes("claude-b"), "force → [1m] only");
+  assert.ok(ids.includes("claude-c") && !ids.includes("claude-c[1m]"), "false → base only");
+  assert.ok(ids.includes("claude-d") && ids.includes("claude-d[1m]"), "true → base + [1m]");
+  assert.equal(all.find((m) => m.id === "claude-d[1m]")!.context_window, 1_000_000, "[1m] variant reports 1M");
+  assert.equal(all.find((m) => m.id === "claude-d")!.context_window, 200_000, "base reports the standard window");
 });
 
 test("transformMessagesBody strips [1m], sets the envelope, flags want1m", () => {
@@ -235,6 +245,20 @@ test("transformMessagesBody strips [1m], sets the envelope, flags want1m", () =>
   assert.equal(out.thinking.type, "adaptive");
   assert.ok(out.max_tokens >= 64000);
   assert.equal(route.want1m, true);
+});
+
+test('"1m": true advertises a variant but does NOT force 1M on the base id', () => {
+  const { slotMap } = normalizeModels([{ name: "V", id: "claude-v", api: "anthropic", model: "backend", url: "https://up", "1m": true }]);
+  const base = transformMessagesBody(Buffer.from(JSON.stringify({ model: "claude-v", max_tokens: 10, messages: [{ role: "user", content: "hi" }] })), {}, slotMap, {}, SETTINGS);
+  assert.equal(base.route.want1m, false, "base id is NOT forced to 1M");
+  const variant = transformMessagesBody(Buffer.from(JSON.stringify({ model: "claude-v[1m]", max_tokens: 10, messages: [{ role: "user", content: "hi" }] })), {}, slotMap, {}, SETTINGS);
+  assert.equal(variant.route.want1m, true, "the [1m] pick is 1M");
+});
+
+test('"1m": "force" forces 1M even on the base id', () => {
+  const { slotMap } = normalizeModels([{ name: "F", id: "claude-f", api: "anthropic", model: "backend", url: "https://up", "1m": "force" }]);
+  const r = transformMessagesBody(Buffer.from(JSON.stringify({ model: "claude-f", max_tokens: 10, messages: [{ role: "user", content: "hi" }] })), {}, slotMap, {}, SETTINGS);
+  assert.equal(r.route.want1m, true);
 });
 
 test("per-model effort override stops forcing effort", () => {
@@ -287,14 +311,15 @@ test("healthz reports ok + codex helper", async () => {
   assert.equal(h.codex_helper, true);
 });
 
-test("/v1/models merges upstream + custom + [1m] variants", async () => {
+test("/v1/models merges upstream + custom; [1m] is opt-in", async () => {
   const data = ((await (await fetch(`${proxyBase}/v1/models`)).json()) as any).data as Array<{ id: string }>;
   const ids = data.map((m) => m.id);
   assert.ok(ids.includes("claude-opus-4-8"), "upstream model present");
-  assert.ok(ids.includes("claude-opus-4-8[1m]"), "default variant present");
+  assert.ok(ids.includes("claude-opus-4-8[1m]"), "opt-in (1m:true) variant present");
   assert.ok(ids.includes("claude-minimax-m3[1m]"), "force variant present");
   assert.ok(!ids.includes("claude-minimax-m3"), "force suppresses the bare id");
   assert.ok(!ids.includes("claude-mock[1m]"), "1m:false opts out");
+  assert.ok(!ids.includes("claude-retry[1m]"), "no 1m flag → no variant (opt-in default)");
 });
 
 test("UltraCode envelope is forced on passthrough", async () => {
@@ -354,4 +379,17 @@ test("empty turn is auto-retried → recovered", async () => {
   const out = await (await postMessages({ model: "claude-retry", max_tokens: 50, messages: [{ role: "user", content: "hi" }] })).text();
   assert.equal(retryHits, 2);
   assert.ok(out.includes("recovered"));
+});
+
+test("validateConfig requires a model for codex/cursor backends", () => {
+  const r = validateConfig({ models: [{ name: "C", api: "codex" }, { name: "D", api: "cursor" }, { name: "E", api: "codex", model: "gpt-5.5" }] } as Config);
+  assert.ok(r.errors.some((e) => e.includes("'C'") && e.includes("model")), "codex without model errors");
+  assert.ok(r.errors.some((e) => e.includes("'D'") && e.includes("model")), "cursor without model errors");
+  assert.ok(!r.errors.some((e) => e.includes("'E'")), "codex with a model is fine");
+});
+
+test("openai_compat with no key sends no Authorization (no fake Bearer)", async () => {
+  await postMessages({ model: "claude-nokey", max_tokens: 50, messages: [{ role: "user", content: "hi" }] });
+  assert.equal(seenOai.model, "nokey-model");
+  assert.equal(seenOaiHeaders["authorization"], undefined, "no Authorization header when no key is configured");
 });

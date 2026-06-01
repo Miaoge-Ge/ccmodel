@@ -13,14 +13,14 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { ENV } from "./env.js";
-import { loadConfig, defaultConfigPath, normalizeModels } from "./config.js";
-import { expandModels } from "./models.js";
-import { validateConfig } from "./validate.js";
+import { ENV } from "./core/env.js";
+import { loadConfig, defaultConfigPath, normalizeModels } from "./config/config.js";
+import { expandModels } from "./pipeline/models.js";
+import { validateConfig } from "./config/validate.js";
 import { createServer, type ProxyContext } from "./server.js";
-import type { EnvelopeSettings } from "./envelope.js";
-import type { Config } from "./types.js";
-import { log } from "./log.js";
+import type { EnvelopeSettings } from "./pipeline/envelope.js";
+import type { Config } from "./config/types.js";
+import { log } from "./core/log.js";
 
 /** Bumped on releases; surfaced in /healthz. */
 const VERSION = "1.1.0";
@@ -31,6 +31,9 @@ function resolveContext(): { ctx: ProxyContext; host: string; port: number } {
   try {
     cfg = loadConfig(cfgPath);
     log(`config: ${cfgPath}`);
+    if (/config\.example\./.test(cfgPath)) {
+      log("WARNING: using config.example.* (placeholders) — copy it to config.jsonc and add your own keys");
+    }
   } catch (e) {
     if ((e as NodeJS.ErrnoException)?.code === "ENOENT") {
       log(`config not found (${cfgPath}); copy config.example.jsonc to config.jsonc`);
@@ -63,7 +66,7 @@ function resolveContext(): { ctx: ProxyContext; host: string; port: number } {
   // Each entry becomes a slot + a discovery model; a [1m] variant is advertised
   // for every model by default (unless an entry opts out with "1m": false).
   const { slotMap, models } = normalizeModels(cfg.models);
-  const discoveryModels = expandModels(models, true);
+  const discoveryModels = expandModels(models);
 
   const ctx: ProxyContext = {
     upstream,
@@ -71,7 +74,6 @@ function resolveContext(): { ctx: ProxyContext; host: string; port: number } {
     slotMap,
     modelMap: ENV.MODEL_MAP,
     discoveryModels,
-    customModels: models,
     version: VERSION,
   };
   return { ctx, host, port };

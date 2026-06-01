@@ -1,8 +1,8 @@
 /** Runtime + per-request context types shared across the server and providers. */
 import type { IncomingHttpHeaders } from "node:http";
-import type { EnvelopeSettings } from "./envelope.js";
-import type { Route, Slot, ModelConfig } from "./types.js";
-import type { DiscoveryModel } from "./models.js";
+import type { EnvelopeSettings } from "../pipeline/envelope.js";
+import type { Route, Slot } from "../config/types.js";
+import type { DiscoveryModel } from "../pipeline/models.js";
 
 /** Process-wide state, built once at startup. */
 export interface ProxyContext {
@@ -11,7 +11,6 @@ export interface ProxyContext {
   slotMap: Record<string, Slot>;
   modelMap: Record<string, string>;
   discoveryModels: DiscoveryModel[];
-  customModels: ModelConfig[];
   version?: string;
 }
 

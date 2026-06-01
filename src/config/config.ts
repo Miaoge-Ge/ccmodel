@@ -3,11 +3,11 @@ import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Config, ModelConfig, ModelEntry, RouteType, Slot } from "./types.js";
-import { expandEnv } from "./env.js";
+import { expandEnv } from "../core/env.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** Repo root is two levels up from dist/src. */
-export const REPO_ROOT = resolve(HERE, "..", "..");
+/** This compiles to dist/src/config/config.js, so the repo root is three up. */
+export const REPO_ROOT = resolve(HERE, "..", "..", "..");
 
 /** Strip JSONC: `//` and `/* *​/` comments and trailing commas (strings intact). */
 export function stripJsonc(text: string): string {

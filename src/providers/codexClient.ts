@@ -1,5 +1,5 @@
 /**
- * codexOauth.ts — route a model to GPT-5.5 (and other Codex models) using a
+ * codexClient.ts — route a model to GPT-5.5 (and other Codex models) using a
  * ChatGPT/Codex *login* instead of an API key. Reuses the credentials written
  * by the official Codex CLI (`codex login` -> ~/.codex/auth.json), talks to the
  * Codex Responses API, and converts the result into the proxy's event vocabulary.
@@ -16,8 +16,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import type { InternalEvent, OpenAIMessage } from "../types.js";
-import { requestUpstream } from "../http.js";
+import type { InternalEvent, OpenAIMessage } from "../config/types.js";
+import { requestUpstream } from "../net/http.js";
 
 const CODEX_HOME = process.env.CODEX_HOME || join(homedir(), ".codex");
 const AUTH_FILE = join(CODEX_HOME, "auth.json");
@@ -208,6 +208,8 @@ export interface CodexParams {
   model?: string;
   reasoning_effort?: string;
   service_tier?: string;
+  /** Cancel the upstream call when the downstream client disconnects. */
+  signal?: AbortSignal;
 }
 
 export async function* streamEvents(params: CodexParams): AsyncGenerator<InternalEvent> {
@@ -250,8 +252,10 @@ export async function* streamEvents(params: CodexParams): AsyncGenerator<Interna
       headers: h,
       body: payload,
       timeoutMs: STREAM_IDLE_TIMEOUT * 1000,
+      signal: params.signal,
     });
   } catch (e) {
+    if (params.signal?.aborted) return; // client went away
     yield { type: "error", message: `Codex API error: ${String(e)}`, status: 502 };
     return;
   }

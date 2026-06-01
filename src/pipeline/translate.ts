@@ -10,8 +10,8 @@
  * any id the client didn't answer, so strict backends never see an orphaned
  * tool_calls turn.
  */
-import { randomHex } from "./ids.js";
-import type { OpenAIBody, OpenAIMessage } from "./types.js";
+import { randomHex } from "../core/ids.js";
+import type { OpenAIBody, OpenAIMessage } from "../config/types.js";
 
 type Json = Record<string, unknown>;
 

@@ -4,10 +4,10 @@
  * client ServerResponse. Used by the openai_compat, codex and cursor paths.
  */
 import type { ServerResponse } from "node:http";
-import type { InternalEvent } from "./types.js";
+import type { InternalEvent } from "../config/types.js";
 import { sseFrame, parseToolInput } from "./sse.js";
-import { newMsgId, newToolId } from "./ids.js";
-import { vlog } from "./log.js";
+import { newMsgId, newToolId } from "../core/ids.js";
+import { vlog } from "../core/log.js";
 
 type Json = Record<string, unknown>;
 
@@ -98,7 +98,7 @@ export async function streamAnthropicFromEvents(
         emitted = true;
         stopReason = "tool_use";
       } else if (ev.type === "usage") {
-        outTok = ev.output_tokens || outTok;
+        outTok = ev.output_tokens ?? outTok;
       } else if (ev.type === "error") {
         if (!emitted) {
           if (!textOpen) openText();

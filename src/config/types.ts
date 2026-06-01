@@ -35,7 +35,13 @@ export interface ModelEntry {
   api?: "anthropic" | "openai" | "codex" | "cursor";
   /** Override the auto-generated id (must start with claude/anthropic). */
   id?: string;
-  /** 1M policy: true (advertise a [1m] variant, default), "force" (always on), false (off). */
+  /**
+   * 1M-context policy (default OFF — most models are NOT 1M-capable, so adding a
+   * `[1m]` pick for them would lie):
+   *   true     advertise a `<name>[1m]` variant (base stays standard; [1m] = 1M)
+   *   "force"  always 1M for this model (only the [1m] entry is advertised)
+   *   false    no [1m] variant (same as omitting it)
+   */
   "1m"?: boolean | "force";
   /** Effort override: a level string, or false to stop forcing effort on this model. */
   effort?: string | false;
@@ -68,7 +74,7 @@ export interface Slot {
   max_output_tokens?: number;
   body?: Record<string, unknown>;
   workspace?: string;
-  context_1m?: boolean | "force" | "variant";
+  context_1m?: boolean | "force";
   envelope?: EnvelopeOverride;
 }
 
@@ -89,7 +95,7 @@ export interface ModelConfig {
   id: string;
   display_name?: string;
   context_window?: number;
-  context_1m?: boolean | "force" | "variant";
+  context_1m?: boolean | "force";
 }
 
 /** Internal event vocabulary shared by every backend path. */

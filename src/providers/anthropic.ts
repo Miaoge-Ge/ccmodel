@@ -8,11 +8,11 @@
  */
 import type { ServerResponse } from "node:http";
 import type { Provider, ProviderRequest } from "./provider.js";
-import type { UpstreamResponse } from "../http.js";
-import { requestUpstream } from "../http.js";
-import { forwardRequestHeaders, applyAuthHeader, sendError, HOP_BY_HOP } from "../httpUtil.js";
-import { ensure1mBetaHeader } from "../model1m.js";
-import { log, vlog } from "../log.js";
+import type { UpstreamResponse } from "../net/http.js";
+import { requestUpstream } from "../net/http.js";
+import { forwardRequestHeaders, applyAuthHeader, sendError, HOP_BY_HOP } from "../net/httpUtil.js";
+import { ensure1mBetaHeader } from "../pipeline/model1m.js";
+import { log, vlog } from "../core/log.js";
 
 export const anthropicProvider: Provider = {
   type: "anthropic",

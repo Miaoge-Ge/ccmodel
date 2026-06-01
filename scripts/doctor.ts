@@ -12,10 +12,10 @@ import { join } from "node:path";
 import { connect } from "node:net";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
-import { REPO_ROOT, parseConfigText, inferType } from "../src/config.js";
-import { validateConfig } from "../src/validate.js";
-import { which } from "../src/which.js";
-import type { Config } from "../src/types.js";
+import { REPO_ROOT, parseConfigText, inferType } from "../src/config/config.js";
+import { validateConfig } from "../src/config/validate.js";
+import { which } from "../src/core/which.js";
+import type { Config } from "../src/config/types.js";
 
 const counts = { ok: 0, note: 0, fail: 0 };
 const ok = (m: string) => (counts.ok++, console.log("[ok]  ", m));
@@ -142,7 +142,9 @@ async function main(): Promise<number> {
   }
 
   // 7. port free
-  const port = Number(process.env.UC_LISTEN_PORT) || cfg.port || 8141;
+  // Match main.ts precedence: an explicit env var wins, else config, else default.
+  const envPort = process.env.UC_LISTEN_PORT;
+  const port = envPort !== undefined && envPort !== "" ? Number(envPort) || 8141 : Number(cfg.port) || 8141;
   (await portFree(port)) ? ok(`port ${port} is free`) : note(`port ${port} already in use — a proxy may already be running (fine), or pick another`);
 
   // 8. offline self-test

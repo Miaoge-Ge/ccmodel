@@ -1,18 +1,18 @@
 /** The HTTP proxy: health, /v1/models discovery, and provider dispatch. */
 import { createServer as createHttpServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import type { Route } from "./types.js";
-import type { ProxyContext, RequestContext } from "./runtime.js";
-import { transformMessagesBody } from "./envelope.js";
-import { mergeModelsResponse } from "./models.js";
-import { requestUpstream } from "./http.js";
-import { forwardRequestHeaders, readBody, sendJson } from "./httpUtil.js";
+import type { Route } from "./config/types.js";
+import type { ProxyContext, RequestContext } from "./core/runtime.js";
+import { transformMessagesBody } from "./pipeline/envelope.js";
+import { mergeModelsResponse } from "./pipeline/models.js";
+import { requestUpstream } from "./net/http.js";
+import { forwardRequestHeaders, readBody, sendJson } from "./net/httpUtil.js";
 import { resolveProvider, registeredTypes } from "./providers/registry.js";
-import { codexAuthAvailable } from "./providers/codexOauth.js";
-import { randomHex } from "./ids.js";
-import { log, vlog } from "./log.js";
+import { codexAuthAvailable } from "./providers/codexClient.js";
+import { randomHex } from "./core/ids.js";
+import { log, vlog } from "./core/log.js";
 
-export type { ProxyContext } from "./runtime.js";
+export type { ProxyContext } from "./core/runtime.js";
 
 type Json = Record<string, unknown>;
 
@@ -29,6 +29,12 @@ export function createServer(ctx: ProxyContext): Server {
 async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContext): Promise<void> {
   const method = req.method || "GET";
   const path = (req.url || "").split("?")[0] || "";
+
+  // Abort any upstream call (messages OR /v1/models) if the client disconnects.
+  const ac = new AbortController();
+  res.on("close", () => {
+    if (!res.writableFinished) ac.abort();
+  });
 
   // ---- health ----
   if (path === "/healthz" || path === "/health") {
@@ -53,15 +59,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
 
   // ---- GET /v1/models discovery ----
   if (method === "GET" && path.endsWith("/v1/models")) {
-    if (await handleModels(req, res, rt)) return;
+    if (await handleModels(req, res, rt, ac.signal)) return;
   }
 
   // ---- build the request context ----
   const id = randomHex(6);
-  const ac = new AbortController();
-  res.on("close", () => {
-    if (!res.writableFinished) ac.abort();
-  });
 
   let body = method === "GET" || method === "HEAD" ? Buffer.alloc(0) : await readBody(req);
   let route: Route = {};
@@ -109,13 +111,13 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
   if (isMessagesPost) vlog(`[${id}] done in ${Date.now() - ctx.startedAt}ms`);
 }
 
-async function handleModels(req: IncomingMessage, res: ServerResponse, rt: ProxyContext): Promise<boolean> {
+async function handleModels(req: IncomingMessage, res: ServerResponse, rt: ProxyContext, signal: AbortSignal): Promise<boolean> {
   if (!rt.discoveryModels.length) return false;
   const fwd = forwardRequestHeaders(req.headers);
   const url = rt.upstream + (req.url || "");
   let upstreamData: unknown = null;
   try {
-    const resp = await requestUpstream({ url, method: "GET", headers: fwd, timeoutMs: 30_000 });
+    const resp = await requestUpstream({ url, method: "GET", headers: fwd, timeoutMs: 30_000, signal });
     if (resp.status < 400) {
       const parsed = JSON.parse(await resp.text());
       if (parsed && typeof parsed === "object") upstreamData = parsed;

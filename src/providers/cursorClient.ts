@@ -1,5 +1,5 @@
 /**
- * cursorAgent.ts — optional helper that routes a model to Cursor's Composer via
+ * cursorClient.ts — optional helper that routes a model to Cursor's Composer via
  * the `cursor-agent` CLI. EXPERIMENTAL: cursor-agent is an autonomous agent with
  * its own tools, so we run it in read-only "ask" mode and bridge tool calls as
  * text markers the model emits and we parse back out. Plain Q&A/reasoning works
@@ -15,9 +15,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { InternalEvent, OpenAIMessage } from "../types.js";
-import { which } from "../which.js";
-import { newToolId } from "../ids.js";
+import type { InternalEvent, OpenAIMessage } from "../config/types.js";
+import { which } from "../core/which.js";
+import { newToolId } from "../core/ids.js";
 
 const MARKER_RE = /<CLAUDE_TOOL_CALL>\s*(\{[\s\S]*?\})\s*<\/CLAUDE_TOOL_CALL>/g;
 

@@ -5,12 +5,12 @@
  */
 import type { Provider, ProviderRequest } from "./provider.js";
 import { emitEvents } from "./provider.js";
-import { anthropicToOpenai } from "../translate.js";
-import { oaiResponseToEvents } from "../sse.js";
-import { requestUpstream } from "../http.js";
-import { applyAuthHeader, sendError } from "../httpUtil.js";
-import { expandEnv } from "../env.js";
-import { log, vlog } from "../log.js";
+import { anthropicToOpenai } from "../pipeline/translate.js";
+import { oaiResponseToEvents } from "../net/sse.js";
+import { requestUpstream } from "../net/http.js";
+import { applyAuthHeader, sendError } from "../net/httpUtil.js";
+import { expandEnv } from "../core/env.js";
+import { log, vlog } from "../core/log.js";
 
 type Json = Record<string, unknown>;
 
@@ -41,8 +41,11 @@ export const openaiProvider: Provider = {
       Accept: ctx.wantStream ? "text/event-stream" : "application/json",
       "Content-Length": String(payload.length),
     };
-    if (ctx.route.auth && ctx.route.auth !== "passthrough") applyAuthHeader(headers, ctx.route.auth);
-    else headers["Authorization"] = "Bearer unused";
+    // Use the configured key. With no key we send NO Authorization — a local
+    // server (Ollama/llama.cpp/LM Studio) doesn't need one, and a remote backend
+    // returns a clear 401. We never forward Claude Code's own credential to a
+    // third-party OpenAI backend.
+    if (ctx.route.auth) applyAuthHeader(headers, ctx.route.auth);
     for (const [k, v] of Object.entries(ctx.route.headers || {})) headers[k] = v;
 
     vlog(`[${ctx.id}] openai_compat -> ${url} model=${ctx.modelId} stream=${ctx.wantStream}`);

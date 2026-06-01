@@ -6,9 +6,9 @@
  * preserved: events are buffered only until the first meaningful event, so a
  * normal turn has zero added latency and partial output is never duplicated.
  */
-import type { EventFactory, InternalEvent } from "./types.js";
-import { ENV } from "./env.js";
-import { log, vlog } from "./log.js";
+import type { EventFactory, InternalEvent } from "../config/types.js";
+import { ENV } from "../core/env.js";
+import { log, vlog } from "../core/log.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));

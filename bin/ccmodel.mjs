@@ -12,7 +12,7 @@
  *   npm run launch                    # same as the first form
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, openSync, statSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, statSync } from "node:fs";
 import { dirname, join, resolve, delimiter, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { homedir } from "node:os";
@@ -69,7 +69,7 @@ async function readProxyConfig(cfgPath) {
   let port = 8141;
   let upstream = "https://api.anthropic.com";
   try {
-    const { parseConfigText } = await import(pathToFileURL(join(repo, "dist", "src", "config.js")).href);
+    const { parseConfigText } = await import(pathToFileURL(join(repo, "dist", "src", "config", "config.js")).href);
     const cfg = parseConfigText(readFileSync(cfgPath, "utf8")) || {};
     if (cfg.port) port = Number(cfg.port);
     if (cfg.upstream) upstream = String(cfg.upstream);
@@ -144,6 +144,7 @@ async function main() {
     console.log(`Starting ccmodel proxy on ${baseUrl} -> ${upstream} ...`);
     const fd = openSync(logFile, "a");
     child = spawn(node, [mainJs], { env: proxyEnv, stdio: ["ignore", fd, fd], detached: proxyOnly });
+    closeSync(fd); // the child keeps its own dup of the fd; don't leak ours
     if (child.pid) writeFileSync(pidFile, String(child.pid));
     let ok = false;
     for (let i = 0; i < 60; i++) {
@@ -161,7 +162,8 @@ async function main() {
   // 8. Seed Claude Code's gateway-models cache (models + [1m] variants on first open).
   const cfgDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
   const gwCache = join(cfgDir, "cache", "gateway-models.json");
-  run(node, [mainJs, "--seed-cache", gwCache, baseUrl], { env: proxyEnv, stdio: "ignore" });
+  const seeded = run(node, [mainJs, "--seed-cache", gwCache, baseUrl], { env: proxyEnv, stdio: "ignore" });
+  if (seeded.status !== 0) console.warn(`Warning: couldn't seed ${gwCache} — your models may not show in /model until you reopen it.`);
 
   if (proxyOnly) {
     if (child) child.unref();

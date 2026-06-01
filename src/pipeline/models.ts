@@ -6,7 +6,7 @@
  * Claude Code only keeps discovered ids matching /^(claude|anthropic)/i, so the
  * variant id (`<id>[1m]`) inherits the base id's prefix and passes that filter.
  */
-import type { ModelConfig } from "./types.js";
+import type { ModelConfig } from "../config/types.js";
 import { ONE_MILLION, STANDARD_CONTEXT, parseModelId, withOneMSuffix } from "./model1m.js";
 
 export interface DiscoveryModel {
@@ -18,46 +18,35 @@ export interface DiscoveryModel {
   context_window?: number;
 }
 
-function wants1mVariant(m: ModelConfig, advertiseAll: boolean): boolean {
+/**
+ * Should this model get a `<id>[1m]` companion in the picker? ONLY when the user
+ * opted in — most models are not 1M-capable, so advertising a [1m] pick for them
+ * would be a lie. `true` offers base + [1m]; `"force"` offers [1m] only.
+ */
+function wants1mVariant(m: ModelConfig): boolean {
   if (parseModelId(m.id).want1m) return false; // already a [1m] id
-  if (m.context_1m === false) return false;
-  if (m.context_1m === true || m.context_1m === "variant" || m.context_1m === "force") return true;
-  return advertiseAll;
+  return m.context_1m === true || m.context_1m === "force";
 }
 
 /**
- * Expand configured models into the discovery list: each base model, plus a
- * `<id>[1m]` companion when 1M is enabled for it (per-model flag or the global
- * `advertise_1m_variants`). Force-1m models are advertised ONLY as their [1m]
- * variant (the base id always behaves as 1M anyway).
+ * Expand configured models into the discovery list (1M is OPT-IN per model):
+ *   - `"1m"` unset / `false` → the base model only, at the standard window.
+ *   - `"1m": true`           → the base (standard) AND a `<id>[1m]` (1M) companion.
+ *   - `"1m": "force"`        → ONLY the `<id>[1m]` (1M) entry (the base would be 1M too).
  */
-export function expandModels(models: ModelConfig[], advertiseAll: boolean): DiscoveryModel[] {
+export function expandModels(models: ModelConfig[]): DiscoveryModel[] {
   const out: DiscoveryModel[] = [];
   const seen = new Set<string>();
-  const push = (id: string, name: string, ctx?: number): void => {
+  const push = (id: string, name: string, ctx: number): void => {
     if (seen.has(id)) return;
     seen.add(id);
-    out.push({
-      type: "model",
-      id,
-      display_name: name,
-      created_at: "2025-01-01T00:00:00Z",
-      ...(ctx ? { context_window: ctx } : {}),
-    });
+    out.push({ type: "model", id, display_name: name, created_at: "2025-01-01T00:00:00Z", context_window: ctx });
   };
 
   for (const m of models) {
     const name = m.display_name || m.id;
-    const forced = m.context_1m === true || m.context_1m === "force";
-    const baseCtx = m.context_window;
-    if (!forced) {
-      push(m.id, name, baseCtx ?? STANDARD_CONTEXT);
-    }
-    if (wants1mVariant(m, advertiseAll) || forced) {
-      const vid = withOneMSuffix(m.id);
-      // 1M variants are named with a plain `[1m]` suffix (matching the id).
-      push(vid, `${name}[1m]`, ONE_MILLION);
-    }
+    if (m.context_1m !== "force") push(m.id, name, m.context_window ?? STANDARD_CONTEXT);
+    if (wants1mVariant(m)) push(withOneMSuffix(m.id), `${name}[1m]`, ONE_MILLION);
   }
   return out;
 }

@@ -80,86 +80,89 @@ npm run launch          # == node bin/ccmodel.mjs
 
 Everything is in one file: **`config.jsonc`** (copied from
 `config.example.jsonc`). It's JSONC — `//` and `/* */` comments and trailing
-commas are fine. Two sections you edit:
+commas are fine. **The whole config is a single list of models** — one entry per
+model you want in `/model`. Only `name` is required; everything else is inferred:
 
-- **`models`** — what shows in `/model`. Every `id` **must start with `claude` or
-  `anthropic`** (Claude Code filters the rest out).
-- **`routes`** — where each id actually goes. The route key matches the model
-  `id` (or the base id of a `[1m]` pick — the proxy strips the suffix).
+| You write | The proxy infers |
+|-----------|------------------|
+| `name` (required) | the `/model` display name **and** the id `claude-<slug(name)>` (Claude Code only keeps `claude`/`anthropic` ids) |
+| `url` | the **backend kind**: `…/anthropic` → passthrough, anything else → OpenAI-compatible. Omit for real Claude. |
+| `key` | the auth header — wrapped as `Authorization: Bearer <key>` (or pass a literal `"x-api-key: …"`). Omit to reuse Claude Code's own credential. |
+| *(nothing)* | a `<name>[1m]` 1M-context variant, advertised automatically |
 
 ### Verified example: DeepSeek (Anthropic-native endpoint)
 
-DeepSeek ships a native Anthropic-compatible endpoint, so it's a **passthrough**
-route — tools, streaming and the model's `thinking` blocks all work as-is. This
-is verified live end-to-end (non-stream, stream, and `[1m]`):
+DeepSeek ships a native Anthropic-compatible endpoint, so a `…/anthropic` url is
+auto-detected as a **passthrough** — tools, streaming and the model's `thinking`
+blocks all work as-is. Verified live end-to-end (non-stream, stream, and `[1m]`):
 
 ```jsonc
 {
-  "proxy": { "advertise_1m_variants": true },
   "models": [
-    { "id": "claude-deepseek-v4-flash", "display_name": "DeepSeek V4 Flash" },
-    { "id": "claude-deepseek-v4-pro",   "display_name": "DeepSeek V4 Pro" }
-  ],
-  "routes": {
-    "claude-deepseek-v4-flash": {
-      "upstream": "https://api.deepseek.com/anthropic",
-      "model": "deepseek-v4-flash",
-      "auth": "Bearer ${DEEPSEEK_API_KEY}"
-    },
-    "claude-deepseek-v4-pro": {
-      "upstream": "https://api.deepseek.com/anthropic",
-      "model": "deepseek-v4-pro",
-      "auth": "Bearer ${DEEPSEEK_API_KEY}"
-    }
-  }
+    { "name": "DeepSeek V4 Flash", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}", "model": "deepseek-v4-flash" },
+    { "name": "DeepSeek V4 Pro",   "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}", "model": "deepseek-v4-pro" }
+  ]
 }
 ```
 
 Put keys inline (gitignored) or as `${ENV_VAR}` — export them or drop them into a
 gitignored `ccmodel.env` the launcher loads.
 
-### Route types
+### Backend kinds
 
-| `type`          | Use for                                                            | Needs |
-|-----------------|-------------------------------------------------------------------|-------|
-| *(omit)*        | Real Claude / DeepSeek `/anthropic` / any Anthropic-compatible endpoint | nothing, or `auth`/`upstream` |
-| `openai_compat` | MiniMax, OpenRouter, OpenAI, Ollama, local llama.cpp — anything speaking OpenAI Chat Completions (tools included) | an API key |
-| `codex_oauth`   | GPT-5.5 via a ChatGPT/Codex login (no API key)                   | `codex login` once |
-| `cursor_agent`  | Cursor Composer (experimental)                                   | `cursor-agent login` |
+The kind is inferred from `url` (or forced with `api`):
 
-### Per-route knobs
+| Kind            | When it's used                                                  | Needs |
+|-----------------|-----------------------------------------------------------------|-------|
+| Anthropic passthrough | no `url` (real Claude), or a `…/anthropic` url (DeepSeek, any Anthropic-compatible endpoint) | nothing, or `key`/`url` |
+| OpenAI-compatible | any other `url` — MiniMax, OpenRouter, OpenAI, Ollama, local llama.cpp (tools translated both ways) | `key` (a local server can omit it) |
+| Codex (`"api": "codex"`) | GPT-5.5 via a ChatGPT/Codex login (no API key)            | `codex login` once |
+| Cursor (`"api": "cursor"`) | Cursor Composer (experimental)                          | `cursor-agent login` |
 
-- `max_output_tokens` — completion cap for `openai_compat` (default 8192).
-- `body` — extra params merged into each `openai_compat` request (e.g. MiniMax-M3
+### Per-model options
+
+All optional, alongside `name`/`url`/`key`/`model`:
+
+- `api` — force the backend kind (`anthropic` / `openai` / `codex` / `cursor`)
+  instead of inferring it from `url`.
+- `id` — override the auto id (must start with `claude`/`anthropic`, else it's prefixed).
+- `1m` — `true` (default: advertise a `[1m]` variant), `"force"` (always 1M), or
+  `false` (no variant).
+- `effort` — set a different effort level, or `false` to stop forcing effort on a
+  strict backend.
+- `max_output_tokens` — completion cap for OpenAI-compatible backends (default 8192).
+- `body` — extra params merged into each OpenAI-compatible request (e.g. MiniMax-M3
   `{ "reasoning_split": true }`). `${VARS}` expanded.
 - `headers` — extra request headers (`${VARS}` expanded).
-- `context_1m` — `true` / `"force"` / `"variant"` / `false` (see below).
-- `envelope` — opt out of envelope fields for a strict backend, e.g.
-  `{ "effort": false, "thinking": false }`.
 
 ### Turning on 1M context
 
 | Want | Do this |
 |------|---------|
-| 1M only when *you* pick it | Pick the **`<model>[1m]`** entry in `/model`. Advertise it with `"advertise_1m_variants": true` or per-model `"context_1m": true`. |
-| 1M *always* for one route | Add `"context_1m": "force"` to that route. |
-| 1M *always*, everywhere | Set `"proxy": { "force_1m": true }` (only if every backend supports it). |
+| 1M only when *you* pick it | Pick the **`<model>[1m]`** entry in `/model` — advertised automatically for every model. |
+| Skip the `[1m]` variant for a model | `"1m": false` on that entry. |
+| 1M *always* for one model | `"1m": "force"` (advertises only the `[1m]` pick). |
+| 1M *always*, everywhere | Top-level `"force_1m": true` (only if every backend supports it). |
 
 Full detail: [docs/ONE_MILLION_CONTEXT.md](docs/ONE_MILLION_CONTEXT.md).
 
 ## Architecture
 
 ```
-Claude Code → server.ts (thin HTTP) → envelope/[1m] transform → Provider (by route type)
+Claude Code → server.ts (thin HTTP) → envelope/[1m] transform → Provider (by backend kind)
                                                                   ├─ anthropic   (passthrough + 1M beta)
                                                                   ├─ openai_compat (Anthropic⇄OpenAI, tools)
                                                                   ├─ codex_oauth  (GPT-5.5 via login)
                                                                   └─ cursor_agent (Composer, experimental)
 ```
 
+- **Layered source.** `config/` (load + normalize + validate), `core/` (env, ids,
+  logging, runtime types), `net/` (HTTP client + SSE/Anthropic emitters),
+  `pipeline/` (the envelope, `[1m]`, discovery, translation, retry), and
+  `providers/` (one module per backend).
 - **Provider registry.** Each backend is a self-contained `Provider`; the server
-  resolves one by route type and never touches transport details. Adding a
-  backend = adding one module + registering it.
+  resolves one by backend kind and never touches transport details. Adding a
+  backend = one module + registering it.
 - **Request pipeline.** A `RequestContext` carries the transformed body, route,
   1M intent, streaming flag, a request id, and an `AbortSignal`.
 - **Robustness.** Empty-turn retry, transient connect retry, per-request idle
@@ -179,10 +182,11 @@ npm test          # build + run the offline self-test (node:test, no network/key
 npm run doctor    # validate environment + config, then run the self-test
 ```
 
-The self-test (18 cases, all offline) covers discovery + `[1m]` variant
-advertisement, the UltraCode envelope, the 1M beta-header guarantee, per-route
-envelope overrides, the provider registry, config validation, Anthropic⇄OpenAI
-tool translation, the strict-backend tool-adjacency fix, and empty-turn retry.
+The self-test (23 cases, all offline) covers discovery + `[1m]` variant
+advertisement, the UltraCode envelope, the 1M beta-header guarantee, per-model
+effort overrides, the provider registry, config validation + normalization,
+Anthropic⇄OpenAI tool translation, the strict-backend tool-adjacency fix, and
+empty-turn retry.
 
 ## Docs
 

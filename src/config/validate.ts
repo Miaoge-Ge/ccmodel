@@ -47,6 +47,10 @@ export function validateConfig(cfg: Config): ValidationResult {
       if (!e.url) errors.push(`model '${e.name}': an openai backend needs a 'url' (the provider's base, usually ending /v1)`);
       if (!e.model) warnings.push(`model '${e.name}': no 'model' set — the auto claude-* id will be sent upstream`);
     }
+    if ((type === "codex_oauth" || type === "cursor_agent") && !e.model) {
+      const ex = type === "codex_oauth" ? "gpt-5.5" : "composer-2.5";
+      errors.push(`model '${e.name}': a ${e.api} backend needs a 'model' (e.g. '${ex}') — without it the auto claude-* id is sent upstream and the backend rejects it`);
+    }
     if (typeof e.key === "string" && PLACEHOLDER.test(e.key) && !e.key.includes("${")) {
       warnings.push(`model '${e.name}': key looks like a placeholder — put your real key there`);
     }

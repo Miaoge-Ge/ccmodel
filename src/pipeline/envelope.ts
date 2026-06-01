@@ -8,9 +8,9 @@
  *      Ultracode reminder (each toggleable),
  * and hand back the rewritten body plus a Route the server forwards on.
  */
-import type { Route, Slot } from "./types.js";
+import type { Route, Slot } from "../config/types.js";
 import { parseModelId, headerRequests1m } from "./model1m.js";
-import { vlog } from "./log.js";
+import { vlog } from "../core/log.js";
 
 export interface EnvelopeSettings {
   /** "" disables effort forcing. */
@@ -100,7 +100,9 @@ export function transformMessagesBody(
 
   // 1M intent: the suffix, an existing beta header (Claude Code already resolved
   // a [1m] model), the global force flag, or a per-route force policy.
-  const routeForces1m = slot?.context_1m === true || slot?.context_1m === "force";
+  // Only "force" (or the [1m] suffix / global / incoming beta) forces 1M. A plain
+  // `"1m": true` merely advertises the variant — the base id stays standard.
+  const routeForces1m = slot?.context_1m === "force";
   const want1m =
     suffix1m || routeForces1m || settings.force1m || headerRequests1m(requestHeaders);
 
@@ -113,7 +115,7 @@ export function transformMessagesBody(
       changed = true;
     }
     if (slot.upstream) route.upstream = slot.upstream.replace(/\/+$/, "");
-    if (slot.auth && slot.auth !== "passthrough") route.auth = slot.auth;
+    if (slot.auth) route.auth = slot.auth;
     if (slot.type) route.type = slot.type;
     if (slot.max_output_tokens) route.max_output_tokens = slot.max_output_tokens;
     if (slot.workspace) route.workspace = slot.workspace;
@@ -145,9 +147,6 @@ export function transformMessagesBody(
       : {}) as Json;
     if (oc.effort !== effEffort) {
       oc.effort = effEffort;
-      body.output_config = oc;
-      changed = true;
-    } else if (!("output_config" in body)) {
       body.output_config = oc;
       changed = true;
     }

@@ -6,11 +6,11 @@
  * know anything about backends.
  */
 import type { ServerResponse } from "node:http";
-import type { EventFactory, RouteType } from "../types.js";
-import type { ProxyContext, RequestContext } from "../runtime.js";
-import { eventsWithRetry } from "../retry.js";
-import { streamAnthropicFromEvents, jsonAnthropicFromEvents } from "../emit.js";
-import { sendError } from "../httpUtil.js";
+import type { EventFactory, RouteType } from "../config/types.js";
+import type { ProxyContext, RequestContext } from "../core/runtime.js";
+import { eventsWithRetry } from "../pipeline/retry.js";
+import { streamAnthropicFromEvents, jsonAnthropicFromEvents } from "../net/emit.js";
+import { sendError } from "../net/httpUtil.js";
 
 export interface ProviderRequest {
   /** Process-wide runtime (default upstream, settings, …). */

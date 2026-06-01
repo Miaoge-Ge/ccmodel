@@ -1,10 +1,10 @@
 /** Provider registry: maps a route type to its Provider. */
-import type { RouteType } from "../types.js";
+import type { RouteType } from "../config/types.js";
 import type { Provider } from "./provider.js";
-import { anthropicProvider } from "./anthropicProvider.js";
-import { openaiProvider } from "./openaiProvider.js";
-import { codexProvider } from "./codexProvider.js";
-import { cursorProvider } from "./cursorProvider.js";
+import { anthropicProvider } from "./anthropic.js";
+import { openaiProvider } from "./openai.js";
+import { codexProvider } from "./codex.js";
+import { cursorProvider } from "./cursor.js";
 
 const registry = new Map<RouteType, Provider>();
 
