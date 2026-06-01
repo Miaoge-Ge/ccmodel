@@ -1,19 +1,15 @@
-/** Load + normalize the single config file (proxy / models / routes). */
+/** Load + normalize the config file (a single list of model entries). */
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Config, ModelConfig, RouteConfig, Slot } from "./types.js";
+import type { Config, ModelConfig, ModelEntry, RouteType, Slot } from "./types.js";
 import { expandEnv } from "./env.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** Repo root is two levels up from dist/src (or src in dev): dist/src -> repo. */
+/** Repo root is two levels up from dist/src. */
 export const REPO_ROOT = resolve(HERE, "..", "..");
 
-/**
- * Strip JSONC: line comments (`// …`), block comments (`/* … *​/`) and trailing
- * commas, while leaving string contents untouched. Hand-rolled so the loader has
- * zero dependencies.
- */
+/** Strip JSONC: `//` and `/* *​/` comments and trailing commas (strings intact). */
 export function stripJsonc(text: string): string {
   let out = "";
   let i = 0;
@@ -26,7 +22,6 @@ export function stripJsonc(text: string): string {
     if (inStr) {
       out += c;
       if (c === "\\") {
-        // copy the escaped char verbatim
         if (i + 1 < n) {
           out += next;
           i += 2;
@@ -58,15 +53,12 @@ export function stripJsonc(text: string): string {
     out += c;
     i += 1;
   }
-  // Remove trailing commas: `, }` / `, ]`
   return out.replace(/,(\s*[}\]])/g, "$1");
 }
 
 /** Drop keys starting with `_` (used as inline documentation in config). */
 export function stripUnderscoreKeys<T>(obj: T): T {
-  if (Array.isArray(obj)) {
-    return obj.map((x) => stripUnderscoreKeys(x)) as unknown as T;
-  }
+  if (Array.isArray(obj)) return obj.map((x) => stripUnderscoreKeys(x)) as unknown as T;
   if (obj && typeof obj === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
@@ -78,15 +70,13 @@ export function stripUnderscoreKeys<T>(obj: T): T {
 }
 
 export function parseConfigText(text: string): Config {
-  const parsed = JSON.parse(stripJsonc(text));
-  return stripUnderscoreKeys(parsed) as Config;
+  return stripUnderscoreKeys(JSON.parse(stripJsonc(text))) as Config;
 }
 
 export function loadConfig(path: string): Config {
   return parseConfigText(readFileSync(path, "utf-8"));
 }
 
-/** Find config.jsonc/json beside the repo root, falling back to the example. */
 export function defaultConfigPath(): string {
   for (const name of ["config.jsonc", "config.json", "config.example.jsonc", "config.example.json"]) {
     const p = join(REPO_ROOT, name);
@@ -95,46 +85,97 @@ export function defaultConfigPath(): string {
   return join(REPO_ROOT, "config.jsonc");
 }
 
-/** routes{} -> resolved slots, expanding ${ENV} in model/upstream/auth/headers. */
-export function routesToSlots(routes: Record<string, RouteConfig> | undefined): Record<string, Slot> {
-  const out: Record<string, Slot> = {};
-  if (!routes || typeof routes !== "object") return out;
-  for (const [mid, route] of Object.entries(routes)) {
-    if (!route || typeof route !== "object") continue;
-    const slot: Slot = {};
-    if (route.model) slot.model = expandEnv(route.model);
-    if (route.upstream) slot.upstream = expandEnv(route.upstream).replace(/\/+$/, "");
-    if (route.auth && route.auth !== "passthrough") slot.auth = expandEnv(route.auth);
-    if (route.type) slot.type = route.type;
-    if (route.max_output_tokens) slot.max_output_tokens = route.max_output_tokens;
-    if (route.workspace) slot.workspace = expandEnv(route.workspace);
-    if (route.context_1m !== undefined) slot.context_1m = route.context_1m;
-    if (route.envelope && typeof route.envelope === "object") slot.envelope = route.envelope;
-    if (route.headers && typeof route.headers === "object") {
-      slot.headers = {};
-      for (const [k, v] of Object.entries(route.headers)) slot.headers[k] = expandEnv(v);
-    }
-    if (route.body && typeof route.body === "object") {
-      slot.body = route.body; // carried raw; ${ENV} expanded at use-site
-    }
-    out[mid] = slot;
-  }
-  return out;
+// ---- normalization: ModelEntry[] -> internal slots + discovery models -------
+
+const API_TO_TYPE: Record<string, RouteType> = {
+  anthropic: "anthropic",
+  openai: "openai_compat",
+  codex: "codex_oauth",
+  cursor: "cursor_agent",
+};
+
+/** Turn a display name into a `claude-…`-safe slug. */
+export function slug(name: string): string {
+  const s = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "model";
 }
 
-/** models[] from config -> normalized model objects (id required). */
-export function modelsFromConfig(models: ModelConfig[] | undefined): ModelConfig[] {
-  const out: ModelConfig[] = [];
-  for (const m of models || []) {
-    if (!m || typeof m !== "object") continue;
-    if (!m.id || typeof m.id !== "string") continue;
-    out.push({
-      id: m.id,
-      display_name: m.display_name || m.id,
-      created_at: m.created_at || "2025-01-01T00:00:00Z",
-      ...(m.context_window ? { context_window: m.context_window } : {}),
-      ...(m.context_1m !== undefined ? { context_1m: m.context_1m } : {}),
+/** Infer the backend kind from an explicit `api` or the upstream URL. */
+export function inferType(url: string | undefined, api: string | undefined): RouteType {
+  if (api && API_TO_TYPE[api]) return API_TO_TYPE[api]!;
+  if (!url) return "anthropic"; // no url => real Claude passthrough
+  if (/\/anthropic(\/|$)/i.test(url)) return "anthropic";
+  return "openai_compat";
+}
+
+/** Wrap a bare key as a Bearer credential, or pass a "Header: value" form through. */
+export function wrapAuth(key: string | undefined): string | undefined {
+  if (!key) return undefined;
+  const k = key.trim();
+  if (!k) return undefined;
+  if (/^bearer\s/i.test(k)) return k;
+  if (k.includes(":")) return k; // e.g. "x-api-key: sk-..."
+  return "Bearer " + k;
+}
+
+export interface NormalizedModels {
+  slotMap: Record<string, Slot>;
+  models: ModelConfig[];
+}
+
+/** Expand the user's model list into internal slots + discovery models. */
+export function normalizeModels(entries: ModelEntry[] | undefined): NormalizedModels {
+  const slotMap: Record<string, Slot> = {};
+  const models: ModelConfig[] = [];
+  const used = new Set<string>();
+
+  for (const e of entries || []) {
+    if (!e || typeof e !== "object" || !e.name || typeof e.name !== "string") continue;
+
+    // id: honor a claude/anthropic id, else derive one from the name (and only
+    // add the `claude-` prefix when the slug doesn't already start with it).
+    const s = slug(e.id || e.name);
+    let id =
+      e.id && /^(claude|anthropic)/i.test(e.id)
+        ? e.id
+        : /^(claude|anthropic)/.test(s)
+          ? s
+          : "claude-" + s;
+    if (used.has(id)) {
+      let n = 2;
+      while (used.has(`${id}-${n}`)) n += 1;
+      id = `${id}-${n}`;
+    }
+    used.add(id);
+
+    const url = e.url ? expandEnv(e.url) : undefined;
+    const type = inferType(url, e.api);
+    const slot: Slot = {};
+    if (type !== "anthropic") slot.type = type;
+    if (e.model) slot.model = expandEnv(e.model);
+    if (url) slot.upstream = url.replace(/\/+$/, "");
+    const auth = wrapAuth(expandEnv(e.key));
+    if (auth) slot.auth = auth;
+    if (e.headers && typeof e.headers === "object") {
+      slot.headers = {};
+      for (const [k, v] of Object.entries(e.headers)) slot.headers[k] = expandEnv(v);
+    }
+    if (e.body && typeof e.body === "object") slot.body = e.body;
+    if (e.max_output_tokens) slot.max_output_tokens = e.max_output_tokens;
+    if (e.workspace) slot.workspace = expandEnv(e.workspace);
+    if (e["1m"] !== undefined) slot.context_1m = e["1m"];
+    if (e.effort !== undefined) slot.envelope = { effort: e.effort };
+
+    slotMap[id] = slot;
+    models.push({
+      id,
+      display_name: e.name,
+      ...(e["1m"] !== undefined ? { context_1m: e["1m"] } : {}),
     });
   }
-  return out;
+
+  return { slotMap, models };
 }

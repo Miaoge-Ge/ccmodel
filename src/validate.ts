@@ -1,63 +1,62 @@
 /**
  * Config validation. Returns structured errors (things that will misbehave) and
- * warnings (things to double-check). Used at server startup to surface problems
- * loudly, and available to the doctor.
+ * warnings (things to double-check). Surfaced at startup; reused by the doctor.
  */
-import type { Config, RouteType } from "./types.js";
-import { parseModelId } from "./model1m.js";
+import type { Config } from "./types.js";
+import { inferType } from "./config.js";
 
 export interface ValidationResult {
   errors: string[];
   warnings: string[];
 }
 
-const KNOWN_TYPES: RouteType[] = ["anthropic", "openai_compat", "codex_oauth", "cursor_agent"];
-const PLACEHOLDER = /REPLACE_WITH|YOUR_|your-/;
+const PLACEHOLDER = /REPLACE_WITH|YOUR_|your-|sk-xxx|sk-\.\.\./i;
+const KNOWN_API = ["anthropic", "openai", "codex", "cursor"];
 
 export function validateConfig(cfg: Config): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const models = Array.isArray(cfg.models) ? cfg.models : [];
-  const routes = cfg.routes && typeof cfg.routes === "object" ? cfg.routes : {};
 
-  const seen = new Set<string>();
-  for (const m of models) {
-    const id = m?.id;
-    if (!id || typeof id !== "string") {
-      errors.push("a model entry is missing a string 'id'");
+  if (models.length === 0) warnings.push("no models configured — /model will show only built-in Claude models");
+
+  const names = new Set<string>();
+  for (const e of models) {
+    if (!e || typeof e !== "object") {
+      errors.push("a model entry is not an object");
       continue;
     }
-    if (!/^(claude|anthropic)/i.test(id)) {
-      errors.push(`model '${id}' will be dropped by Claude Code — id must start with 'claude' or 'anthropic'`);
-    }
-    if (seen.has(id)) warnings.push(`duplicate model id '${id}'`);
-    seen.add(id);
-    const base = parseModelId(id).baseId;
-    if (!(id in routes) && !(base in routes)) errors.push(`model '${id}' has no matching route`);
-  }
-
-  for (const [name, route] of Object.entries(routes)) {
-    if (!route || typeof route !== "object") {
-      errors.push(`route '${name}' is not an object`);
+    if (!e.name || typeof e.name !== "string") {
+      errors.push("a model entry is missing a string 'name'");
       continue;
     }
-    const type = (route.type || "anthropic") as RouteType;
-    if (!KNOWN_TYPES.includes(type)) errors.push(`route '${name}': unknown type '${String(route.type)}'`);
-    if (type === "openai_compat" && !route.upstream) errors.push(`route '${name}': openai_compat requires 'upstream'`);
-    if (type === "openai_compat" && !route.model) {
-      warnings.push(`route '${name}': no 'model' set — the claude-* alias will be sent upstream`);
+    if (names.has(e.name)) warnings.push(`duplicate model name '${e.name}'`);
+    names.add(e.name);
+
+    if (e.api && !KNOWN_API.includes(e.api)) {
+      errors.push(`model '${e.name}': unknown api '${e.api}' (use anthropic | openai | codex | cursor)`);
     }
-    if (typeof route.auth === "string" && PLACEHOLDER.test(route.auth) && !route.auth.includes("${")) {
-      warnings.push(`route '${name}': auth still looks like a placeholder (${route.auth})`);
+    if (e.url !== undefined && typeof e.url !== "string") {
+      errors.push(`model '${e.name}': 'url' must be a string`);
+    }
+    if (e.id && !/^(claude|anthropic)/i.test(e.id)) {
+      warnings.push(`model '${e.name}': id '${e.id}' will be prefixed with 'claude-' (Claude Code only keeps claude/anthropic ids)`);
+    }
+    const type = inferType(typeof e.url === "string" ? e.url : undefined, e.api);
+    if (type === "openai_compat") {
+      if (!e.url) errors.push(`model '${e.name}': an openai backend needs a 'url' (the provider's base, usually ending /v1)`);
+      if (!e.model) warnings.push(`model '${e.name}': no 'model' set — the auto claude-* id will be sent upstream`);
+    }
+    if (typeof e.key === "string" && PLACEHOLDER.test(e.key) && !e.key.includes("${")) {
+      warnings.push(`model '${e.name}': key looks like a placeholder — put your real key there`);
     }
   }
 
-  const p = cfg.proxy || {};
-  if (typeof p.listen_port === "number" && (p.listen_port < 1 || p.listen_port > 65535)) {
-    errors.push(`proxy.listen_port ${p.listen_port} is out of range`);
+  if (typeof cfg.port === "number" && (cfg.port < 1 || cfg.port > 65535)) {
+    errors.push(`port ${cfg.port} is out of range`);
   }
-  if (p.force_1m) {
-    warnings.push("proxy.force_1m is on — EVERY request uses 1M context; ensure all backends support it");
+  if (cfg.force_1m) {
+    warnings.push("force_1m is on — every request uses 1M context; ensure all backends support it");
   }
 
   return { errors, warnings };

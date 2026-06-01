@@ -14,7 +14,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { ENV } from "./env.js";
-import { loadConfig, defaultConfigPath, routesToSlots, modelsFromConfig } from "./config.js";
+import { loadConfig, defaultConfigPath, normalizeModels } from "./config.js";
 import { expandModels } from "./models.js";
 import { validateConfig } from "./validate.js";
 import { createServer, type ProxyContext } from "./server.js";
@@ -45,30 +45,25 @@ function resolveContext(): { ctx: ProxyContext; host: string; port: number } {
   for (const w of warnings) log(`config warning: ${w}`);
   for (const e of errors) log(`config error: ${e}`);
 
-  const proxyCfg = cfg.proxy && typeof cfg.proxy === "object" ? cfg.proxy : {};
-
-  // Precedence: explicit env var > config.json > built-in default.
-  const host = process.env.UC_LISTEN_HOST || proxyCfg.listen_host || ENV.LISTEN_HOST;
-  const port =
-    "UC_LISTEN_PORT" in process.env ? ENV.LISTEN_PORT : proxyCfg.listen_port ? Number(proxyCfg.listen_port) : ENV.LISTEN_PORT;
-  const upstream = (
-    "UC_UPSTREAM" in process.env ? ENV.UPSTREAM : proxyCfg.anthropic_upstream || ENV.UPSTREAM
-  ).replace(/\/+$/, "");
+  // Precedence: explicit env var > config > built-in default.
+  const host = process.env.UC_LISTEN_HOST || cfg.host || ENV.LISTEN_HOST;
+  const port = "UC_LISTEN_PORT" in process.env ? ENV.LISTEN_PORT : cfg.port ? Number(cfg.port) : ENV.LISTEN_PORT;
+  const upstream = ("UC_UPSTREAM" in process.env ? ENV.UPSTREAM : cfg.upstream || ENV.UPSTREAM).replace(/\/+$/, "");
   const maxTokensFloor =
-    "UC_MAX_TOKENS" in process.env ? ENV.MAX_TOKENS_FLOOR : proxyCfg.max_tokens_floor ? Number(proxyCfg.max_tokens_floor) : ENV.MAX_TOKENS_FLOOR;
+    "UC_MAX_TOKENS" in process.env ? ENV.MAX_TOKENS_FLOOR : cfg.max_tokens ? Number(cfg.max_tokens) : ENV.MAX_TOKENS_FLOOR;
 
   const settings: EnvelopeSettings = {
     forceEffort: ENV.FORCE_EFFORT,
     forceThinking: ENV.FORCE_THINKING,
     maxTokensFloor,
     injectReminder: ENV.INJECT_REMINDER,
-    force1m: ENV.FORCE_1M || proxyCfg.force_1m === true,
+    force1m: ENV.FORCE_1M || cfg.force_1m === true,
   };
 
-  const slotMap = routesToSlots(cfg.routes);
-  const models = modelsFromConfig(cfg.models);
-  const advertiseAll = proxyCfg.advertise_1m_variants === true || settings.force1m;
-  const discoveryModels = expandModels(models, advertiseAll);
+  // Each entry becomes a slot + a discovery model; a [1m] variant is advertised
+  // for every model by default (unless an entry opts out with "1m": false).
+  const { slotMap, models } = normalizeModels(cfg.models);
+  const discoveryModels = expandModels(models, true);
 
   const ctx: ProxyContext = {
     upstream,

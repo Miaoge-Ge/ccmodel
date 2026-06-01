@@ -71,9 +71,8 @@ async function readProxyConfig(cfgPath) {
   try {
     const { parseConfigText } = await import(pathToFileURL(join(repo, "dist", "src", "config.js")).href);
     const cfg = parseConfigText(readFileSync(cfgPath, "utf8")) || {};
-    const p = cfg.proxy || {};
-    if (p.listen_port) port = Number(p.listen_port);
-    if (p.anthropic_upstream) upstream = String(p.anthropic_upstream);
+    if (cfg.port) port = Number(cfg.port);
+    if (cfg.upstream) upstream = String(cfg.upstream);
   } catch {
     /* defaults */
   }
