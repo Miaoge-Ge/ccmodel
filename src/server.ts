@@ -6,7 +6,7 @@ import type { ProxyContext, RequestContext } from "./core/runtime.js";
 import { transformMessagesBody } from "./pipeline/envelope.js";
 import { mergeModelsResponse } from "./pipeline/models.js";
 import { requestUpstream } from "./net/http.js";
-import { forwardRequestHeaders, readBody, sendJson } from "./net/httpUtil.js";
+import { forwardRequestHeaders, readBody, sendJson, BodyTooLargeError } from "./net/httpUtil.js";
 import { resolveProvider, registeredTypes } from "./providers/registry.js";
 import { codexAuthAvailable } from "./providers/codexClient.js";
 import { randomHex } from "./core/ids.js";
@@ -68,7 +68,21 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
   // ---- build the request context ----
   const id = randomHex(6);
 
-  let body = method === "GET" || method === "HEAD" ? Buffer.alloc(0) : await readBody(req);
+  let body: Buffer;
+  if (method === "GET" || method === "HEAD") {
+    body = Buffer.alloc(0);
+  } else {
+    try {
+      body = await readBody(req, rt.maxBodyBytes ?? 0);
+    } catch (e) {
+      if (e instanceof BodyTooLargeError) {
+        log(`[${id}] rejected oversized body (> ${e.limit} bytes)`);
+        sendJson(res, 413, { type: "error", error: { type: "request_too_large", message: e.message } });
+        return;
+      }
+      throw e;
+    }
+  }
   let route: Route = {};
   let parsed: Json | null = null;
   let modelId = "";

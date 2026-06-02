@@ -73,6 +73,7 @@ function resolveContext(): { ctx: ProxyContext; host: string; port: number } {
     modelMap: ENV.MODEL_MAP,
     discoveryModels,
     version: VERSION,
+    maxBodyBytes: ENV.MAX_BODY_BYTES,
   };
   return { ctx, host, port };
 }

@@ -50,12 +50,43 @@ export function applyAuthHeader(headers: Record<string, string>, auth: string): 
   }
 }
 
-export function readBody(req: IncomingMessage): Promise<Buffer> {
+/** Thrown by readBody when the inbound body exceeds the configured cap. */
+export class BodyTooLargeError extends Error {
+  constructor(public readonly limit: number) {
+    super(`request body exceeds the ${limit}-byte limit`);
+    this.name = "BodyTooLargeError";
+  }
+}
+
+/**
+ * Buffer the request body, rejecting with BodyTooLargeError once it exceeds
+ * `maxBytes` (0 disables the cap). Bounds memory so a runaway/hostile client
+ * can't OOM the proxy with an unbounded upload.
+ */
+export function readBody(req: IncomingMessage, maxBytes = 0): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const parts: Buffer[] = [];
-    req.on("data", (c: Buffer) => parts.push(c));
-    req.on("end", () => resolve(Buffer.concat(parts)));
-    req.on("error", reject);
+    let total = 0;
+    let over = false;
+    req.on("data", (c: Buffer) => {
+      if (over) return;
+      total += c.length;
+      if (maxBytes > 0 && total > maxBytes) {
+        over = true;
+        reject(new BodyTooLargeError(maxBytes));
+        // Drain (not destroy) the rest so the socket stays usable for the caller
+        // to write a 413 response back.
+        req.resume();
+        return;
+      }
+      parts.push(c);
+    });
+    req.on("end", () => {
+      if (!over) resolve(Buffer.concat(parts));
+    });
+    req.on("error", (e) => {
+      if (!over) reject(e);
+    });
   });
 }
 

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { AddressInfo } from "node:net";
 import { requestUpstream } from "../../src/net/http.js";
-import { applyAuthHeader, forwardRequestHeaders, flatten, HOP_BY_HOP } from "../../src/net/httpUtil.js";
+import { applyAuthHeader, forwardRequestHeaders, flatten, HOP_BY_HOP, readBody, BodyTooLargeError } from "../../src/net/httpUtil.js";
 
 function startServer(handler: Parameters<typeof createServer>[1]): Promise<{ base: string; server: Server }> {
   const server = createServer(handler);
@@ -84,4 +84,41 @@ test("requestUpstream rejects promptly when the signal is already aborted", asyn
   const ac = new AbortController();
   ac.abort();
   await assert.rejects(() => requestUpstream({ url: "http://127.0.0.1:1/x", method: "GET", signal: ac.signal }));
+});
+
+test("readBody buffers within the cap and rejects beyond it", async () => {
+  const { base, server } = await startServer((req, res) => {
+    readBody(req, 10).then(
+      (buf) => {
+        res.writeHead(200);
+        res.end("ok:" + buf.length);
+      },
+      (e) => {
+        res.writeHead(e instanceof BodyTooLargeError ? 413 : 500);
+        res.end((e as Error).name);
+      },
+    );
+  });
+  try {
+    assert.equal(await (await fetch(base + "/x", { method: "POST", body: "tiny" })).text(), "ok:4");
+    const big = await fetch(base + "/x", { method: "POST", body: "x".repeat(100) });
+    assert.equal(big.status, 413);
+    assert.equal(await big.text(), "BodyTooLargeError");
+  } finally {
+    server.close();
+  }
+});
+
+test("readBody with no cap (0) buffers any size", async () => {
+  const { base, server } = await startServer((req, res) => {
+    readBody(req, 0).then((buf) => {
+      res.writeHead(200);
+      res.end(String(buf.length));
+    });
+  });
+  try {
+    assert.equal(await (await fetch(base + "/x", { method: "POST", body: "y".repeat(5000) })).text(), "5000");
+  } finally {
+    server.close();
+  }
 });

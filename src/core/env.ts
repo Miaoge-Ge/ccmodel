@@ -26,6 +26,8 @@ export const ENV = {
   LISTEN_PORT: envInt("UC_LISTEN_PORT", 8141),
   UPSTREAM: (process.env.UC_UPSTREAM || "https://api.anthropic.com").replace(/\/+$/, ""),
   MAX_TOKENS_FLOOR: envInt("UC_MAX_TOKENS", 64000),
+  /** Inbound /v1/messages body cap in bytes (0 disables). 64 MiB headroom for 1M-token requests. */
+  MAX_BODY_BYTES: envInt("UC_MAX_BODY_BYTES", 64 * 1024 * 1024),
   /** Empty string => leave effort untouched. */
   FORCE_EFFORT: process.env.UC_FORCE_EFFORT ?? "xhigh",
   FORCE_THINKING: envBool("UC_FORCE_THINKING", true),

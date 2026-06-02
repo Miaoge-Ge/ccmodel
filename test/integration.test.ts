@@ -4,8 +4,9 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "../src/server.js";
 import { CONTEXT_1M_BETA } from "../src/pipeline/model1m.js";
-import { startHarness, type Harness } from "./helpers/harness.js";
+import { startHarness, buildCtx, listen, type Harness } from "./helpers/harness.js";
 
 let h: Harness;
 before(async () => {
@@ -100,4 +101,21 @@ test("openai_compat with no key sends no Authorization (no fake Bearer)", async 
   await h.post({ model: "claude-nokey-model", max_tokens: 50, messages: [{ role: "user", content: "hi" }] });
   assert.equal(h.state.seenOai.model, "nokey-model");
   assert.equal(h.state.seenOaiHeaders["authorization"], undefined, "no Authorization header when no key is configured");
+});
+
+test("an oversized request body is rejected with 413", async () => {
+  const ctx = { ...buildCtx({ models: [] }, "http://127.0.0.1:1"), maxBodyBytes: 50 };
+  const server = createServer(ctx);
+  const port = await listen(server);
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/v1/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "x", messages: [{ role: "user", content: "y".repeat(500) }] }),
+    });
+    assert.equal(r.status, 413);
+    assert.equal(((await r.json()) as any).error.type, "request_too_large");
+  } finally {
+    server.close();
+  }
 });

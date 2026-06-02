@@ -11,6 +11,8 @@ export interface ProxyContext {
   modelMap: Record<string, string>;
   discoveryModels: DiscoveryModel[];
   version?: string;
+  /** Inbound body cap in bytes (0 disables). */
+  maxBodyBytes?: number;
 }
 
 /** Everything a provider needs to know about one inbound request. */
