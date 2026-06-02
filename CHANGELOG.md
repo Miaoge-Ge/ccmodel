@@ -6,6 +6,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-06-02
+
 ### Fixed
 
 - **CI green on Windows** — added `.gitattributes` (`* text=auto eol=lf`) so
@@ -14,7 +16,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   failure; the Ubuntu jobs were already green).
 - **No more CI deprecation warnings** — bumped `actions/checkout` and
   `actions/setup-node` from v4 to v6 (v4 ran on the now-deprecated Node 20 action
-  runtime).
+  runtime). CI is fully green on Node 20/22/24 × Linux/Windows with no warnings.
 
 ## [1.3.1] — 2026-06-02
 
