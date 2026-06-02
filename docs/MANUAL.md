@@ -94,22 +94,28 @@ Everything is in one file: **`config.jsonc`** (copied from
 commas are fine; keys starting with `_` are ignored (handy for notes).
 `config.jsonc` is gitignored, so your keys never get committed.
 
-**The whole config is a single list of models.** Only `name` is required;
-everything else is inferred:
+**The whole config is a single list of models.** In the common case an entry is
+just three fields — `{ "model": …, "url": …, "key": … }`. Only `model` is
+required; everything else is inferred:
 
 | You write | The proxy infers |
 |-----------|------------------|
-| `name` (required) | the `/model` display name **and** the id `claude-<slug(name)>` (Claude Code only keeps `claude`/`anthropic` ids) |
+| `model` (required) | the backend id sent upstream **and** the `/model` id `claude-<slug(model)>` (Claude Code only keeps `claude`/`anthropic` ids). A trailing **`[1m]`** marks it a 1M model. |
 | `url` | the **backend kind**: `…/anthropic` → passthrough, any other url → OpenAI-compatible. Omit for real Claude. |
 | `key` | the auth header — wrapped as `Authorization: Bearer <key>` (or pass a literal `"x-api-key: …"`). Omit to reuse Claude Code's own credential. |
+
+**1M is one character: the `[1m]` suffix.** `"model": "MiniMax-M3"` is a standard
+200K pick; `"model": "MiniMax-M3[1m]"` is a guaranteed-1M pick. The suffix is
+stripped before the id reaches the backend, so only add it to models that really
+support 1M. One entry = one `/model` pick (see [§6](#6-the-1m-1m-context-guarantee)).
 
 ```jsonc
 {
   // optional globals (defaults shown):
   // "host": "127.0.0.1", "port": 8141, "max_tokens": 64000, "force_1m": false,
   "models": [
-    { "name": "Claude Opus 4.8", "model": "claude-opus-4-8", "1m": true },
-    { "name": "DeepSeek V4 Pro", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}", "model": "deepseek-v4-pro" }
+    { "model": "claude-opus-4-8[1m]", "name": "Claude Opus 4.8 (1M)" },
+    { "model": "deepseek-v4-pro", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}" }
   ]
 }
 ```
@@ -124,18 +130,20 @@ everything else is inferred:
 | `max_tokens` | `64000` | the `max_tokens` floor forced onto every request |
 | `force_1m` | `false` | force 1M on **every** request (only if every backend supports it) |
 
-### Per-model options (all optional, beside `name`/`url`/`key`/`model`)
+### Per-model options (all optional, beside `model`/`url`/`key`)
 
 | Field | Meaning |
 |-------|---------|
-| `api` | force the backend kind (`anthropic` / `openai` / `codex` / `cursor`) instead of inferring from `url` |
-| `id` | override the auto id (must start with `claude`/`anthropic`, else it's prefixed) |
-| `1m` | 1M policy — **opt-in**, see [§6](#6-the-1m-1m-context-guarantee). `true` = offer a `[1m]` pick; `"force"` = always 1M; `false`/omit = standard only |
+| `name` | a prettier display label in `/model` (defaults to `model`) |
+| `api` | force the backend kind (`anthropic` / `openai` / `codex` / `cursor`) instead of inferring from `url`. Required for codex/cursor (no url to infer from) |
 | `effort` | a different effort level, or `false` to stop forcing effort on a strict backend |
 | `max_output_tokens` | completion cap for OpenAI-compatible backends (default 8192) |
 | `body` | extra params merged into each OpenAI-compatible request (e.g. `{ "reasoning_split": true }`). `${VARS}` expanded |
 | `headers` | extra request headers (`${VARS}` expanded) |
 | `workspace` | working dir for a `cursor` backend |
+
+> **1M** is not a per-model field — it's the `[1m]` suffix on `model`. See
+> [§6](#6-the-1m-1m-context-guarantee).
 
 ### Backend kinds
 
@@ -170,30 +178,30 @@ Each recipe is **one entry** in the `models` list.
 **DeepSeek (Anthropic-native passthrough — verified end-to-end):**
 
 ```jsonc
-{ "name": "DeepSeek V4 Pro", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}", "model": "deepseek-v4-pro" }
+{ "model": "deepseek-v4-pro", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}" }
 ```
 
-**MiniMax-M3 (OpenAI-compatible, native ~1M):**
+**MiniMax-M3 (OpenAI-compatible, native ~1M — note the `[1m]` suffix):**
 
 ```jsonc
 {
-  "name": "MiniMax M3",
+  "model": "MiniMax-M3[1m]",
   "url": "https://api.minimax.io/v1",
-  "model": "MiniMax-M3",
   "key": "${MINIMAX_API_KEY}",
   "max_output_tokens": 64000,
-  "1m": "force",
   "body": { "reasoning_split": true }
 }
 ```
 
+- The `[1m]` suffix advertises M3 as a 1M pick; it's stripped to `MiniMax-M3`
+  before the id reaches the backend.
 - `"body": { "reasoning_split": true }` keeps M3's `<think>` chain-of-thought out
   of the visible answer. Without it you'll see raw `<think>…</think>`.
 
 **OpenRouter / any OpenAI Chat Completions endpoint:**
 
 ```jsonc
-{ "name": "OpenRouter Llama 3.3", "url": "https://openrouter.ai/api/v1", "model": "meta-llama/llama-3.3-70b-instruct", "key": "${OPENROUTER_API_KEY}" }
+{ "model": "meta-llama/llama-3.3-70b-instruct", "url": "https://openrouter.ai/api/v1", "key": "${OPENROUTER_API_KEY}", "name": "OpenRouter Llama 3.3" }
 ```
 
 - `url` is the base exactly as the provider documents it (usually ends `/v1`); the
@@ -202,13 +210,13 @@ Each recipe is **one entry** in the `models` list.
 **Local server (Ollama / llama.cpp / LM Studio) — no key:**
 
 ```jsonc
-{ "name": "Local", "url": "http://127.0.0.1:11434/v1", "model": "your-local-model" }
+{ "model": "your-local-model", "url": "http://127.0.0.1:11434/v1" }
 ```
 
 **GPT-5.5 via a ChatGPT/Codex login (no API key):**
 
 ```jsonc
-{ "name": "GPT-5.5", "api": "codex", "model": "gpt-5.5" }
+{ "model": "gpt-5.5", "api": "codex" }
 ```
 
 Run `codex login` once (creates `~/.codex/auth.json`). codex honors the UltraCode
@@ -218,7 +226,7 @@ effort (`xhigh` → `high`). Env knobs: `UC_CODEX_EFFORT`, `UC_CODEX_SERVICE_TIE
 **Cursor Composer (experimental):**
 
 ```jsonc
-{ "name": "Composer 2.5", "api": "cursor", "model": "composer-2.5" }
+{ "model": "composer-2.5", "api": "cursor" }
 ```
 
 Needs the `cursor-agent` CLI and `cursor-agent login`. Runs in read-only "ask"
@@ -229,7 +237,7 @@ makes it hang).
 **Strict Anthropic-compatible backend that rejects the effort field:**
 
 ```jsonc
-{ "name": "Strict", "url": "https://example/anthropic", "model": "some-model", "key": "${KEY}", "effort": false }
+{ "model": "some-model", "url": "https://example/anthropic", "key": "${KEY}", "effort": false }
 ```
 
 ## 6. The `[1m]` 1M-context guarantee
@@ -252,8 +260,9 @@ routes). When it goes missing, the request silently falls back to 200K.
 On each `POST /v1/messages` it:
 
 1. **Detects 1M intent** from any of: the `model` id ends in `[1m]`; the request
-   already carries the `context-1m-2025-08-07` beta; the model has `"1m": "force"`;
-   or the global `force_1m` is on.
+   already carries the `context-1m-2025-08-07` beta; the picked model came from a
+   `[1m]` config entry (so 1M is guaranteed even if Claude Code stripped the suffix
+   on the wire); or the global `force_1m` is on.
 2. **Strips the `[1m]` suffix** from the outgoing model id (backends don't
    understand it — mirrors Claude Code).
 3. **Guarantees the beta header** on Anthropic passthrough, merging with any betas
@@ -262,32 +271,34 @@ On each `POST /v1/messages` it:
 For OpenAI-compatible backends the 1M window is the backend's *native* property,
 not an Anthropic beta — the proxy just forwards the clean id and never caps input.
 
-### 1M is opt-in (important)
+### 1M is opt-in via the `[1m]` suffix (important)
 
-**A model is standard (200K) unless you say otherwise** — most models are *not*
-1M-capable, so ccmodel does not pretend they are. Per-model `"1m"`:
+**A model is standard (200K) unless its `model` id carries `[1m]`** — most models
+are *not* 1M-capable, so ccmodel does not pretend they are. The suffix is the only
+switch, and each entry maps to exactly one `/model` pick:
 
-| `"1m"` | `/model` shows | Behavior |
-|--------|----------------|----------|
-| omitted / `false` | the base model only | standard window; never auto-1M |
-| `true` | the base **and** `<name>[1m]` | base = 200K; the `[1m]` pick = 1M (the base is *not* forced) |
-| `"force"` | only `<name>[1m]` | every request to this model is 1M |
+| `model` value | `/model` shows | Behavior |
+|---------------|----------------|----------|
+| `"X"` | `claude-x` | standard 200K window; never auto-1M |
+| `"X[1m]"` | `claude-x[1m]` | guaranteed 1M on every request to it |
+
+Want both a 200K *and* a 1M pick of the same backend model? Add two entries — one
+`"X"` and one `"X[1m]"`. (They get distinct ids, e.g. `claude-x` and `claude-x-2[1m]`.)
+
+A standard entry still **honors an explicit `[1m]`** if one reaches the proxy on
+the wire — so the guarantee applies even to a pick you didn't pre-advertise.
 
 Global always-on: top-level `"force_1m": true` (or `UC_FORCE_1M=1`) — only if
 every backend supports 1M.
-
-Set `"1m": true` on models you know support 1M (real Claude Opus 4.6+/Sonnet 4.6),
-and `"1m": "force"` on natively-1M backends (e.g. MiniMax-M3).
 
 ### Caveats
 
 - **Eligibility & billing are the provider's.** ccmodel sends the right header;
   whether your plan grants 1M (and how it bills past 200K) is between you and the
-  provider. Opus 1M is typically included on Max/Team/Enterprise; Sonnet 1M often
-  needs usage credits.
-- **Retired betas.** Anthropic retired `context-1m-2025-08-07` for Sonnet 4 / 4.5
-  on 2026-04-30; use a current 1M model (Opus 4.6+/Sonnet 4.6), where the header is
-  at worst harmlessly redundant.
+  provider.
+- **Beta support changes over time.** Use a current model/plan combination that
+  your provider documents as 1M-capable; retired or ineligible models may still
+  reject or ignore the beta.
 - **Not magic.** `[1m]` can't give 1M to a backend that doesn't support it.
 
 ## 7. How it works
@@ -310,10 +321,11 @@ translation; for codex, the effort is mapped onto the Codex reasoning effort.
 
 When `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`, Claude Code calls
 `GET /v1/models` and lists what comes back. The launchers set that env var and
-pre-seed `cache/gateway-models.json` so your models — and any `[1m]` siblings —
+pre-seed `cache/gateway-models.json` so your models — including any `[1m]` picks —
 show on first open. Discovered ids are filtered with `/^(claude|anthropic)/i`;
-ccmodel's auto id is `claude-<slug(name)>`, so this is handled for you. Discovery
-only triggers on a first-party (OAuth) login, not a raw `ANTHROPIC_API_KEY`.
+ccmodel's auto id is `claude-<slug(model)>` (and a `[1m]` id inherits that prefix),
+so this is handled for you. Discovery only triggers on a first-party (OAuth) login,
+not a raw `ANTHROPIC_API_KEY`.
 
 ### Routing
 
@@ -364,13 +376,13 @@ disconnect aborts the upstream call).
 |------|------|
 | `src/main.ts` | entry: load config, start server; `--models` / `--seed-cache` |
 | `src/server.ts` | HTTP handler: health, `/v1/models`, `/v1/messages` routing |
-| `src/config/config.ts` | JSONC loader + `normalizeModels` (entries → slots + discovery) |
+| `src/config/config.ts` | JSONC loader + `normalizeModels` (entries → routing slots + discovery models, one each) |
 | `src/config/{types,validate}.ts` | shared types / config validation |
 | `src/core/{env,ids,log,which,runtime}.ts` | env + `${VAR}` / ids / logger / `which` / context types |
 | `src/net/{http,httpUtil,sse,emit}.ts` | HTTP client / header helpers / OpenAI→event / Anthropic SSE+JSON |
 | `src/pipeline/envelope.ts` | the UltraCode envelope + `[1m]` enforcement |
 | `src/pipeline/model1m.ts` | `[1m]` parsing + the `context-1m-2025-08-07` beta |
-| `src/pipeline/models.ts` | `/v1/models` discovery + opt-in `[1m]` variants |
+| `src/pipeline/models.ts` | `/v1/models` discovery merge (upstream + custom) |
 | `src/pipeline/translate.ts` | Anthropic ⇄ OpenAI (tools both ways, strict-backend adjacency) |
 | `src/pipeline/retry.ts` | empty-turn retry |
 | `src/providers/*` | the Provider interface, registry, and one module per backend |
@@ -410,12 +422,14 @@ npm test          # build + run the offline self-test (node:test, no network/key
 npm run doctor    # validate environment + config, then run the self-test
 ```
 
-The self-test is fully offline (an in-process mock backend) and covers discovery +
-opt-in `[1m]` variants, the UltraCode envelope, the 1M beta-header guarantee,
-per-model `effort`, the no-key auth behavior, config validation + normalization,
-`REPO_ROOT` resolution, Anthropic⇄OpenAI tool translation, the strict-backend
-tool-adjacency fix, and empty-turn retry. CI runs it on Node 18/20/22 ×
-Linux/Windows.
+The self-test (32 cases) is fully offline (an in-process mock backend) and covers
+`[1m]`-suffix parsing, config normalization (id/type/auth inference, id dedup, the
+`[1m]` → `force1m` mapping), 1M discovery advertisement, the UltraCode envelope,
+the 1M beta-header guarantee (via suffix, per-model force, global flag, and an
+incoming header), per-model `effort`, the no-key auth behavior, config validation,
+the `/v1/models` merge, `REPO_ROOT` resolution, Anthropic⇄OpenAI tool translation,
+the strict-backend tool-adjacency fix, and empty-turn retry. CI runs it on Node
+18/20/22 × Linux/Windows.
 
 ## 12. For AI assistants
 
@@ -425,9 +439,10 @@ a genuinely-1M `[1m]` variant. (1) `node`/`claude` present. (2) `npm install &&
 npm run doctor` — if the self-test fails, the install is broken, stop and report
 it. (3) Ask what they have (an OpenAI-compatible key → give it a `url`; a Codex
 login → `"api": "codex"`; just Claude → still useful). Copy
-`config.example.jsonc` → `config.jsonc`, one entry per model; only `name` is
-required; mark genuinely-1M models with `"1m": true`/`"force"`; codex/cursor need
-`model`. (4) `npm run doctor` until exit 0. (5) `npm run launch`. (6) Verify in
+`config.example.jsonc` → `config.jsonc`, one entry per model; only `model` is
+required (`{ model, url, key }` covers most); mark genuinely-1M models by adding a
+`[1m]` suffix to `model`; codex/cursor need `"api"`. (4) `npm run doctor` until
+exit 0. (5) `npm run launch`. (6) Verify in
 `/model`, send "say OK", confirm tools fire on an OpenAI-compatible model, and a
 `[1m]` pick logs `want1m=true`. **Never** commit `config.jsonc`/`ccmodel.env`,
 never touch global `~/.claude`, and never paper over a failing `npm test`.

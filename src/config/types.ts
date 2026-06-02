@@ -16,33 +16,30 @@ export interface EnvelopeOverride {
 
 /**
  * A single user-facing model entry — the WHOLE config is just a list of these.
- * Only `name` is required. Everything else is inferred:
- *   - `id`     auto = `claude-<slug(name)>` (so Claude Code keeps it)
- *   - `api`    auto from `url` (".../anthropic" → anthropic, else openai)
- *   - `key`    auto-wrapped as `Authorization: Bearer <key>` (or `Header: value`)
- *   - `1m`     defaults on (a `<id>[1m]` variant is advertised)
+ * Only `model` is required; key + url cover the common case. Everything else is
+ * inferred:
+ *   - a trailing `[1m]` on `model` marks it as a 1M-context model (guaranteed)
+ *   - `id`   auto = `claude-<slug(model)>` (so Claude Code keeps it in /model)
+ *   - `api`  auto from `url` (".../anthropic" → passthrough, else openai-compat)
+ *   - `key`  auto-wrapped as `Authorization: Bearer <key>` (or a `Header: value`)
+ *
+ * The simplest possible entry is just `{ "model": "...", "url": "...", "key": "..." }`.
  */
 export interface ModelEntry {
-  /** Display name in /model; also the basis for the auto id. */
-  name: string;
-  /** Upstream base URL. Omit for real Claude (api.anthropic.com). */
-  url?: string;
-  /** API key (supports ${ENV}). Omit to pass Claude Code's own credential through. */
-  key?: string;
-  /** Backend model id sent upstream. */
-  model?: string;
-  /** Force a backend kind instead of inferring from `url`. */
-  api?: "anthropic" | "openai" | "codex" | "cursor";
-  /** Override the auto-generated id (must start with claude/anthropic). */
-  id?: string;
   /**
-   * 1M-context policy (default OFF — most models are NOT 1M-capable, so adding a
-   * `[1m]` pick for them would lie):
-   *   true     advertise a `<name>[1m]` variant (base stays standard; [1m] = 1M)
-   *   "force"  always 1M for this model (only the [1m] entry is advertised)
-   *   false    no [1m] variant (same as omitting it)
+   * Backend model id sent upstream. REQUIRED. A trailing `[1m]` (e.g.
+   * `"MiniMax-M3[1m]"`) marks this as a 1M-context model: the suffix is stripped
+   * before the id reaches the backend, and the 1M window is guaranteed.
    */
-  "1m"?: boolean | "force";
+  model: string;
+  /** Upstream base URL. Omit for real Claude; `…/anthropic` = passthrough, else OpenAI-compatible. */
+  url?: string;
+  /** API key (supports ${ENV}). Omit for a login-based (codex) or keyless (local) backend. */
+  key?: string;
+  /** Display name in /model (defaults to `model`). */
+  name?: string;
+  /** Force a backend kind instead of inferring from `url` (needed for codex/cursor, which have no url). */
+  api?: "anthropic" | "openai" | "codex" | "cursor";
   /** Effort override: a level string, or false to stop forcing effort on this model. */
   effort?: string | false;
   headers?: Record<string, string>;
@@ -64,7 +61,7 @@ export interface Config {
   models?: ModelEntry[];
 }
 
-/** Internal resolved routing slot (post-normalization), keyed by model id. */
+/** Internal resolved routing slot (post-normalization), keyed by the base model id. */
 export interface Slot {
   type?: RouteType;
   model?: string;
@@ -74,8 +71,19 @@ export interface Slot {
   max_output_tokens?: number;
   body?: Record<string, unknown>;
   workspace?: string;
-  context_1m?: boolean | "force";
+  /** This entry is a 1M model (its `model` carried `[1m]`) — always guarantee 1M. */
+  force1m?: boolean;
   envelope?: EnvelopeOverride;
+}
+
+/** A model advertised on GET /v1/models (and in Claude Code's /model picker). */
+export interface DiscoveryModel {
+  type: "model";
+  id: string;
+  display_name: string;
+  created_at: string;
+  /** Context-window hint (1M for [1m] models, else the standard window). */
+  context_window?: number;
 }
 
 /** Per-request routing decision from the envelope step. */
@@ -88,14 +96,6 @@ export interface Route {
   body?: Record<string, unknown>;
   workspace?: string;
   want1m?: boolean;
-}
-
-/** A normalized model for /v1/models discovery. */
-export interface ModelConfig {
-  id: string;
-  display_name?: string;
-  context_window?: number;
-  context_1m?: boolean | "force";
 }
 
 /** Internal event vocabulary shared by every backend path. */

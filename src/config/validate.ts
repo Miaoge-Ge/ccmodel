@@ -20,39 +20,32 @@ export function validateConfig(cfg: Config): ValidationResult {
 
   if (models.length === 0) warnings.push("no models configured — /model will show only built-in Claude models");
 
-  const names = new Set<string>();
+  const seen = new Set<string>();
   for (const e of models) {
     if (!e || typeof e !== "object") {
       errors.push("a model entry is not an object");
       continue;
     }
-    if (!e.name || typeof e.name !== "string") {
-      errors.push("a model entry is missing a string 'name'");
+    if (typeof e.model !== "string" || !e.model.trim()) {
+      errors.push("a model entry is missing a string 'model'");
       continue;
     }
-    if (names.has(e.name)) warnings.push(`duplicate model name '${e.name}'`);
-    names.add(e.name);
+    const label = e.name || e.model;
+    if (seen.has(e.model)) warnings.push(`duplicate model '${e.model}'`);
+    seen.add(e.model);
 
     if (e.api && !KNOWN_API.includes(e.api)) {
-      errors.push(`model '${e.name}': unknown api '${e.api}' (use anthropic | openai | codex | cursor)`);
+      errors.push(`model '${label}': unknown api '${e.api}' (use anthropic | openai | codex | cursor)`);
     }
     if (e.url !== undefined && typeof e.url !== "string") {
-      errors.push(`model '${e.name}': 'url' must be a string`);
-    }
-    if (e.id && !/^(claude|anthropic)/i.test(e.id)) {
-      warnings.push(`model '${e.name}': id '${e.id}' will be prefixed with 'claude-' (Claude Code only keeps claude/anthropic ids)`);
+      errors.push(`model '${label}': 'url' must be a string`);
     }
     const type = inferType(typeof e.url === "string" ? e.url : undefined, e.api);
-    if (type === "openai_compat") {
-      if (!e.url) errors.push(`model '${e.name}': an openai backend needs a 'url' (the provider's base, usually ending /v1)`);
-      if (!e.model) warnings.push(`model '${e.name}': no 'model' set — the auto claude-* id will be sent upstream`);
-    }
-    if ((type === "codex_oauth" || type === "cursor_agent") && !e.model) {
-      const ex = type === "codex_oauth" ? "gpt-5.5" : "composer-2.5";
-      errors.push(`model '${e.name}': a ${e.api} backend needs a 'model' (e.g. '${ex}') — without it the auto claude-* id is sent upstream and the backend rejects it`);
+    if (type === "openai_compat" && !e.url) {
+      errors.push(`model '${label}': an openai backend needs a 'url' (the provider's base, usually ending /v1)`);
     }
     if (typeof e.key === "string" && PLACEHOLDER.test(e.key) && !e.key.includes("${")) {
-      warnings.push(`model '${e.name}': key looks like a placeholder — put your real key there`);
+      warnings.push(`model '${label}': key looks like a placeholder — put your real key there`);
     }
   }
 

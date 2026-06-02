@@ -102,7 +102,7 @@ export function transformMessagesBody(
   // a [1m] model), the global force flag, or a per-route force policy.
   // Only "force" (or the [1m] suffix / global / incoming beta) forces 1M. A plain
   // `"1m": true` merely advertises the variant — the base id stays standard.
-  const routeForces1m = slot?.context_1m === "force";
+  const routeForces1m = slot?.force1m === true;
   const want1m =
     suffix1m || routeForces1m || settings.force1m || headerRequests1m(requestHeaders);
 

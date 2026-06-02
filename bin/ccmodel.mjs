@@ -12,7 +12,7 @@
  *   npm run launch                    # same as the first form
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, statSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, statSync, readdirSync } from "node:fs";
 import { dirname, join, resolve, delimiter, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { homedir } from "node:os";
@@ -43,6 +43,31 @@ function run(cmd, args, opts = {}) {
 }
 function npm(args) {
   return run(isWin ? "npm.cmd" : "npm", args, { cwd: repo, shell: isWin });
+}
+
+function latestMtimeMs(path) {
+  if (!existsSync(path)) return 0;
+  const st = statSync(path);
+  if (!st.isDirectory()) return st.mtimeMs;
+  let latest = st.mtimeMs;
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    const child = join(path, entry.name);
+    if (entry.isDirectory()) {
+      latest = Math.max(latest, latestMtimeMs(child));
+    } else if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".json"))) {
+      latest = Math.max(latest, statSync(child).mtimeMs);
+    }
+  }
+  return latest;
+}
+
+function needsBuild() {
+  if (!existsSync(mainJs)) return true;
+  const builtAt = statSync(mainJs).mtimeMs;
+  for (const p of [join(repo, "package.json"), join(repo, "tsconfig.json"), join(repo, "src"), join(repo, "scripts")]) {
+    if (latestMtimeMs(p) > builtAt) return true;
+  }
+  return false;
 }
 
 async function isHealthy(baseUrl) {
@@ -89,9 +114,9 @@ async function main() {
     process.exit(1);
   }
 
-  // 2. Build on first run.
-  if (!existsSync(mainJs)) {
-    console.log("Building ccmodel (first run)...");
+  // 2. Build on first run, or whenever TypeScript sources are newer than dist.
+  if (needsBuild()) {
+    console.log(existsSync(mainJs) ? "Rebuilding ccmodel (sources changed)..." : "Building ccmodel (first run)...");
     if (!existsSync(join(repo, "node_modules"))) npm(["install"]);
     if (npm(["run", "build"]).status !== 0) {
       console.error("Build failed.");

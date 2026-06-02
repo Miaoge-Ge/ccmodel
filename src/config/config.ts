@@ -2,8 +2,9 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Config, ModelConfig, ModelEntry, RouteType, Slot } from "./types.js";
+import type { Config, DiscoveryModel, ModelEntry, RouteType, Slot } from "./types.js";
 import { expandEnv } from "../core/env.js";
+import { ONE_MILLION, STANDARD_CONTEXT, parseModelId, withOneMSuffix } from "../pipeline/model1m.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** This compiles to dist/src/config/config.js, so the repo root is three up. */
@@ -16,6 +17,32 @@ export function stripJsonc(text: string): string {
   const n = text.length;
   let inStr = false;
   let quote = "";
+
+  const nextSignificant = (from: number): string => {
+    let j = from;
+    while (j < n) {
+      const c = text[j]!;
+      const next = j + 1 < n ? text[j + 1]! : "";
+      if (/\s/.test(c)) {
+        j += 1;
+        continue;
+      }
+      if (c === "/" && next === "/") {
+        j += 2;
+        while (j < n && text[j] !== "\n") j += 1;
+        continue;
+      }
+      if (c === "/" && next === "*") {
+        j += 2;
+        while (j < n && !(text[j] === "*" && text[j + 1] === "/")) j += 1;
+        j = j < n ? j + 2 : j;
+        continue;
+      }
+      return c;
+    }
+    return "";
+  };
+
   while (i < n) {
     const c = text[i]!;
     const next = i + 1 < n ? text[i + 1]! : "";
@@ -47,13 +74,17 @@ export function stripJsonc(text: string): string {
     if (c === "/" && next === "*") {
       i += 2;
       while (i < n && !(text[i] === "*" && text[i + 1] === "/")) i += 1;
-      i += 2;
+      i = i < n ? i + 2 : i;
+      continue;
+    }
+    if (c === "," && ["}", "]"].includes(nextSignificant(i + 1))) {
+      i += 1;
       continue;
     }
     out += c;
     i += 1;
   }
-  return out.replace(/,(\s*[}\]])/g, "$1");
+  return out;
 }
 
 /** Drop keys starting with `_` (used as inline documentation in config). */
@@ -85,7 +116,7 @@ export function defaultConfigPath(): string {
   return join(REPO_ROOT, "config.jsonc");
 }
 
-// ---- normalization: ModelEntry[] -> internal slots + discovery models -------
+// ---- normalization: ModelEntry[] -> routing slots + discovery models --------
 
 const API_TO_TYPE: Record<string, RouteType> = {
   anthropic: "anthropic",
@@ -122,40 +153,50 @@ export function wrapAuth(key: string | undefined): string | undefined {
 }
 
 export interface NormalizedModels {
+  /** Routing slots keyed by the base (suffix-free) model id. */
   slotMap: Record<string, Slot>;
-  models: ModelConfig[];
+  /** Models advertised on GET /v1/models — one per entry. */
+  discoveryModels: DiscoveryModel[];
 }
 
-/** Expand the user's model list into internal slots + discovery models. */
+/**
+ * Normalize the user's model list into routing slots + discovery models. Each
+ * entry maps to exactly ONE advertised model:
+ *   - `"model": "x"`        → a standard (200K) `claude-<slug(x)>` pick.
+ *   - `"model": "x[1m]"`    → a 1M `claude-<slug(x)>[1m]` pick; the suffix is
+ *                             stripped before `x` is sent upstream, and 1M is
+ *                             guaranteed on every request for it.
+ * The slot is keyed by the base id (sans `[1m]`) so the envelope can resolve it
+ * whether or not Claude Code kept the suffix on the wire.
+ */
 export function normalizeModels(entries: ModelEntry[] | undefined): NormalizedModels {
   const slotMap: Record<string, Slot> = {};
-  const models: ModelConfig[] = [];
+  const discoveryModels: DiscoveryModel[] = [];
   const used = new Set<string>();
 
   for (const e of entries || []) {
-    if (!e || typeof e !== "object" || !e.name || typeof e.name !== "string") continue;
+    if (!e || typeof e !== "object" || typeof e.model !== "string" || !e.model.trim()) continue;
 
-    // id: honor a claude/anthropic id, else derive one from the name (and only
-    // add the `claude-` prefix when the slug doesn't already start with it).
-    const s = slug(e.id || e.name);
-    let id =
-      e.id && /^(claude|anthropic)/i.test(e.id)
-        ? e.id
-        : /^(claude|anthropic)/.test(s)
-          ? s
-          : "claude-" + s;
-    if (used.has(id)) {
+    // Split a trailing [1m] off the model: the bare id goes upstream; the suffix
+    // flags this entry as a guaranteed-1M model.
+    const { baseId: backendModel, want1m } = parseModelId(expandEnv(e.model).trim());
+
+    // Discovery id: claude-<slug(model)>, prefixed only when the slug doesn't
+    // already start with claude/anthropic (Claude Code keeps only those ids).
+    const s = slug(backendModel);
+    let baseId = /^(claude|anthropic)/.test(s) ? s : "claude-" + s;
+    if (used.has(baseId)) {
       let n = 2;
-      while (used.has(`${id}-${n}`)) n += 1;
-      id = `${id}-${n}`;
+      while (used.has(`${baseId}-${n}`)) n += 1;
+      baseId = `${baseId}-${n}`;
     }
-    used.add(id);
+    used.add(baseId);
 
     const url = e.url ? expandEnv(e.url) : undefined;
     const type = inferType(url, e.api);
     const slot: Slot = {};
     if (type !== "anthropic") slot.type = type;
-    if (e.model) slot.model = expandEnv(e.model);
+    if (backendModel) slot.model = backendModel;
     if (url) slot.upstream = url.replace(/\/+$/, "");
     const auth = wrapAuth(expandEnv(e.key));
     if (auth) slot.auth = auth;
@@ -166,16 +207,18 @@ export function normalizeModels(entries: ModelEntry[] | undefined): NormalizedMo
     if (e.body && typeof e.body === "object") slot.body = e.body;
     if (e.max_output_tokens) slot.max_output_tokens = e.max_output_tokens;
     if (e.workspace) slot.workspace = expandEnv(e.workspace);
-    if (e["1m"] !== undefined) slot.context_1m = e["1m"];
+    if (want1m) slot.force1m = true;
     if (e.effort !== undefined) slot.envelope = { effort: e.effort };
+    slotMap[baseId] = slot;
 
-    slotMap[id] = slot;
-    models.push({
-      id,
-      display_name: e.name,
-      ...(e["1m"] !== undefined ? { context_1m: e["1m"] } : {}),
+    discoveryModels.push({
+      type: "model",
+      id: want1m ? withOneMSuffix(baseId) : baseId,
+      display_name: e.name || e.model,
+      created_at: "2025-01-01T00:00:00Z",
+      context_window: want1m ? ONE_MILLION : STANDARD_CONTEXT,
     });
   }
 
-  return { slotMap, models };
+  return { slotMap, discoveryModels };
 }

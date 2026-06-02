@@ -15,7 +15,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { ENV } from "./core/env.js";
 import { loadConfig, defaultConfigPath, normalizeModels } from "./config/config.js";
-import { expandModels } from "./pipeline/models.js";
 import { validateConfig } from "./config/validate.js";
 import { createServer, type ProxyContext } from "./server.js";
 import type { EnvelopeSettings } from "./pipeline/envelope.js";
@@ -23,7 +22,7 @@ import type { Config } from "./config/types.js";
 import { log } from "./core/log.js";
 
 /** Bumped on releases; surfaced in /healthz. */
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 function resolveContext(): { ctx: ProxyContext; host: string; port: number } {
   const cfgPath = process.env.UC_CONFIG || defaultConfigPath();
@@ -63,10 +62,9 @@ function resolveContext(): { ctx: ProxyContext; host: string; port: number } {
     force1m: ENV.FORCE_1M || cfg.force_1m === true,
   };
 
-  // Each entry becomes a slot + a discovery model; a [1m] variant is advertised
-  // for every model by default (unless an entry opts out with "1m": false).
-  const { slotMap, models } = normalizeModels(cfg.models);
-  const discoveryModels = expandModels(models);
+  // Each entry becomes one routing slot + one advertised model. A `[1m]` suffix
+  // on the entry's `model` makes that advertised pick a guaranteed-1M model.
+  const { slotMap, discoveryModels } = normalizeModels(cfg.models);
 
   const ctx: ProxyContext = {
     upstream,

@@ -117,27 +117,28 @@ async function main(): Promise<number> {
 
   // 6. per-model credential checks
   for (const e of models) {
-    if (!e || typeof e !== "object" || !e.name) continue;
+    if (!e || typeof e !== "object" || typeof e.model !== "string") continue;
+    const label = e.name || e.model;
     const type = inferType(typeof e.url === "string" ? e.url : undefined, e.api);
     if (type === "codex_oauth") {
       const auth = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "auth.json");
-      existsSync(auth) ? ok(`model '${e.name}': Codex login found`) : note(`model '${e.name}': no ${auth} — run \`codex login\` before using it`);
+      existsSync(auth) ? ok(`model '${label}': Codex login found`) : note(`model '${label}': no ${auth} — run \`codex login\` before using it`);
       continue;
     }
     if (type === "cursor_agent") {
       const binp = process.env.CURSOR_AGENT_BIN || which("cursor-agent") || join(homedir(), ".local", "bin", "cursor-agent");
-      binp && existsSync(binp) ? ok(`model '${e.name}': cursor-agent found`) : note(`model '${e.name}': cursor-agent not found — install it and run \`cursor-agent login\` (experimental)`);
+      binp && existsSync(binp) ? ok(`model '${label}': cursor-agent found`) : note(`model '${label}': cursor-agent not found — install it and run \`cursor-agent login\` (experimental)`);
       continue;
     }
     const refs = new Set(referencedVars(e.key));
     for (const hv of Object.values(e.headers || {})) for (const r of referencedVars(hv)) refs.add(r);
     for (const v of [...refs].sort()) {
-      if (process.env[v]) ok(`model '${e.name}': env var ${v} is set`);
-      else if (usingExample) note(`model '${e.name}': ${v} not set yet (example; set it once you keep this model)`);
-      else fail(`model '${e.name}': ${v} is empty — set it (env or ccmodel.env) or inline the key`);
+      if (process.env[v]) ok(`model '${label}': env var ${v} is set`);
+      else if (usingExample) note(`model '${label}': ${v} not set yet (example; set it once you keep this model)`);
+      else fail(`model '${label}': ${v} is empty — set it (env or ccmodel.env) or inline the key`);
     }
     if (refs.size === 0 && typeof e.key === "string" && PLACEHOLDER.test(e.key)) {
-      usingExample ? note(`model '${e.name}': key is a placeholder — put your real key there`) : fail(`model '${e.name}': key is still a placeholder`);
+      usingExample ? note(`model '${label}': key is a placeholder — put your real key there`) : fail(`model '${label}': key is still a placeholder`);
     }
   }
 

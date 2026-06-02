@@ -1,0 +1,287 @@
+# ccmodel — 系统手册
+
+[English](MANUAL.md) · **简体中文**
+
+这是 ccmodel 的完整参考：安装、配置、后端范例、`[1m]` 100 万上下文保证、环境变量、架构、排错与开发测试。想先快速了解，可以看 [README.zh-CN.md](../README.zh-CN.md)。
+
+## 目录
+
+- [1. ccmodel 是什么](#1-ccmodel-是什么)
+- [2. 运行要求](#2-运行要求)
+- [3. 安装与启动](#3-安装与启动)
+- [4. 配置模型](#4-配置模型)
+- [5. 后端范例](#5-后端范例)
+- [6. `[1m]` 100 万上下文保证](#6-1m-100-万上下文保证)
+- [7. 工作机制](#7-工作机制)
+- [8. 环境变量](#8-环境变量)
+- [9. 架构与文件地图](#9-架构与文件地图)
+- [10. 排错](#10-排错)
+- [11. 开发与测试](#11-开发与测试)
+- [12. 给 AI 助手的执行清单](#12-给-ai-助手的执行清单)
+- [13. 卸载](#13-卸载)
+
+---
+
+## 1. ccmodel 是什么
+
+ccmodel 是一个本地回环代理，挂在 Claude Code 的 `ANTHROPIC_BASE_URL` 上。它不修改你的全局 Claude Code 配置，只在本次会话里做两件事：
+
+1. **让任意模型用上 UltraCode 信封。** 在 API 层面，UltraCode 主要是 `output_config.effort = "xhigh"`、自适应 `thinking`、较大的 `max_tokens`，以及一条系统提醒。ccmodel 会把这组信封加到每个 `/v1/messages` 请求上。
+2. **让 `[1m]` 不再悄悄退回 20 万。** Claude Code 的 `[1m]` 后缀需要配套的 `anthropic-beta: context-1m-2025-08-07` 头部才能真正打开 100 万上下文。某些路径会丢掉这个头部，ccmodel 会在需要时补回。
+
+它支持四类后端：Anthropic 直通、OpenAI 兼容接口、Codex 登录、Cursor Agent。
+
+## 2. 运行要求
+
+| 项目 | 要求 |
+|------|------|
+| Node.js | 18+ |
+| Claude Code CLI | `npm i -g @anthropic-ai/claude-code`，并具备你要使用的权限 |
+| 后端凭证 | API key、`codex login`，或本地 OpenAI 兼容服务 |
+| 操作系统 | Windows、macOS、Linux、WSL |
+
+运行时只依赖 Node 内置模块；TypeScript 只用于构建和测试。
+
+## 3. 安装与启动
+
+```bash
+npm install
+npm run doctor
+copy config.example.jsonc config.jsonc   # Windows
+# cp config.example.jsonc config.jsonc   # macOS / Linux / WSL
+npm run launch
+```
+
+常用命令：
+
+| 命令 | 作用 |
+|------|------|
+| `npm run launch` | 构建、启动代理、写入本次会话 settings、打开 Claude Code |
+| `npm run launch -- --proxy-only` | 只启动代理并让它常驻 |
+| `npm run proxy` | 直接运行已构建的 `dist/src/main.js` |
+| `npm run doctor` | 校验环境、配置、构建产物，并跑离线自测 |
+| `npm run icons` | 安装桌面启动图标 |
+| `npm run uninstall` | 停止代理并移除会话状态/启动图标 |
+
+启动后，在 Claude Code 中输入 `/model` 选择模型。`model` id 结尾带 `[1m]` 的那一项以 100 万上下文运行。
+
+## 4. 配置模型
+
+配置文件是 `config.jsonc`，从 `config.example.jsonc` 复制。它支持 `//`、`/* */` 注释和尾逗号，且 `config.jsonc` 已被 `.gitignore` 排除。
+
+常见情况下，一条模型只要三个字段 —— `{ "model": …, "url": …, "key": … }`。只有 `model` 必填：
+
+```jsonc
+{
+  "models": [
+    { "model": "claude-opus-4-8[1m]", "name": "Claude Opus 4.8 (1M)" },
+    { "model": "your-local-model", "url": "http://127.0.0.1:11434/v1" }
+  ]
+}
+```
+
+**1M 只差一个后缀：`[1m]`。** `"model": "MiniMax-M3"` 是标准 20 万选项；`"model": "MiniMax-M3[1m]"` 是「保证」1M 的选项。后缀会在 id 发往后端前被剥掉，所以只给真正支持 1M 的模型加。一条 = 一个 `/model` 选项（见 [§6](#6-1m-100-万上下文保证)）。
+
+顶层选项：
+
+| 选项 | 默认 | 说明 |
+|------|------|------|
+| `host` | `127.0.0.1` | 监听地址 |
+| `port` | `8141` | 监听端口 |
+| `upstream` | `https://api.anthropic.com` | Anthropic 直通默认上游 |
+| `max_tokens` | `64000` | 全局 `max_tokens` 下限 |
+| `force_1m` | `false` | 对所有请求强制 1M，仅在所有后端都支持时使用 |
+
+每个模型的选项（`model` 必填，其余可选）：
+
+| 选项 | 说明 |
+|------|------|
+| `model` | **必填。** 发给后端的真实模型 id，并据此自动生成 `/model` id `claude-<slug(model)>`。结尾带 `[1m]` 即标记为 1M 模型。 |
+| `url` | 后端地址；省略表示真 Claude 直通 |
+| `key` | API key，支持 `${ENV_VAR}`；普通 key 会自动包装成 `Authorization: Bearer ...` |
+| `name` | `/model` 里更好看的显示名（默认就是 `model`） |
+| `api` | 强制后端类型：`anthropic` / `openai` / `codex` / `cursor`；codex/cursor 必填（没有 url 可推断） |
+| `effort` | 覆盖 UltraCode effort，或设为 `false` 关闭强制 effort |
+| `max_output_tokens` | OpenAI 兼容后端的补全上限；默认 8192 |
+| `body` | 合并到 OpenAI 兼容请求体的额外参数 |
+| `headers` | 合并到后端请求的额外请求头 |
+| `workspace` | Cursor Agent 工作目录 |
+
+> **1M 不是单独的字段**，而是 `model` 上的 `[1m]` 后缀。见 [§6](#6-1m-100-万上下文保证)。
+
+后端类型推断：
+
+| 类型 | 触发方式 |
+|------|----------|
+| Anthropic 直通 | 无 `url`、`.../anthropic` 地址，或 `"api": "anthropic"` |
+| OpenAI 兼容 | 其他 `url`，或 `"api": "openai"` |
+| Codex 登录 | `"api": "codex"` |
+| Cursor Agent | `"api": "cursor"` |
+
+## 5. 后端范例
+
+Anthropic / 真 Claude（Opus 4.8 支持 1M，加 `[1m]` 即得保证 1M 选项）：
+
+```jsonc
+{ "model": "claude-opus-4-8[1m]", "name": "Claude Opus 4.8 (1M)" }
+```
+
+DeepSeek Anthropic-native：
+
+```jsonc
+{ "model": "deepseek-v4-pro", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}" }
+```
+
+MiniMax-M3 OpenAI-compatible（原生约 1M，注意 `[1m]` 后缀）：
+
+```jsonc
+{
+  "model": "MiniMax-M3[1m]",
+  "url": "https://api.minimax.io/v1",
+  "key": "${MINIMAX_API_KEY}",
+  "max_output_tokens": 64000,
+  "body": { "reasoning_split": true }
+}
+```
+
+- `[1m]` 后缀把 M3 广告为 1M 选项；发往后端前会被剥成 `MiniMax-M3`。
+- `"body": { "reasoning_split": true }` 让 M3 的 `<think>` 思维链不混入可见回答。
+
+Codex 登录：
+
+```jsonc
+{ "model": "gpt-5.5", "api": "codex" }
+```
+
+本地 OpenAI 兼容服务：
+
+```jsonc
+{ "model": "your-local-model", "url": "http://127.0.0.1:11434/v1" }
+```
+
+## 6. `[1m]` 100 万上下文保证
+
+`[1m]` 是 Claude Code 对 100 万上下文模型变体的约定，例如 `claude-opus-4-8[1m]`。真正让 Anthropic Messages API 打开 1M 的是：
+
+```text
+anthropic-beta: context-1m-2025-08-07
+```
+
+ccmodel 会：
+
+1. 从以下任一判断 1M 意图：模型 id 结尾是 `[1m]`；传入请求已带 `context-1m-2025-08-07` beta；所选模型来自一条 `[1m]` 配置项（即便 Claude Code 在传输途中剥掉了后缀也照样保证 1M）；或全局 `force_1m` 开启。
+2. 发给后端前移除 `[1m]` 后缀。
+3. 对 Anthropic 直通请求补上 `context-1m-2025-08-07` beta（与已有 beta 合并去重，幂等）。
+
+OpenAI 兼容后端的 1M 是后端的*原生*属性、不是 Anthropic beta —— 代理只是转发干净的 id 并且不截断输入。
+
+通过 `[1m]` 后缀 opt-in（每条 = 一个 `/model` 选项）：
+
+| `model` 值 | `/model` 显示 | 行为 |
+|-----------|---------------|------|
+| `"X"` | `claude-x` | 标准 20 万；不会自动 1M |
+| `"X[1m]"` | `claude-x[1m]` | 每个请求都「保证」1M |
+
+同一后端模型想同时要 200K 和 1M 两个选项？写两条 —— 一条 `"X"`、一条 `"X[1m]"`（它们会拿到不同的 id）。标准条目仍会**尊重传入的显式 `[1m]`**，所以即便你没预先广告，保证依然生效。全局常开：顶层 `"force_1m": true`（或 `UC_FORCE_1M=1`），仅当所有后端都支持时。
+
+不要给不支持 1M 的后端加 `[1m]`。`[1m]` 能保证头部和路由正确，但不能让不支持 1M 的模型变成 1M 模型。
+
+## 7. 工作机制
+
+请求路径：
+
+```text
+Claude Code -> ccmodel server -> envelope/[1m] transform -> Provider -> backend
+```
+
+主要行为：
+
+- `/healthz` 返回版本、provider、模型、1M 策略和 Codex 登录状态。
+- `GET /v1/models` 合并上游模型与本地配置模型。
+- `POST /v1/messages` 会先注入 UltraCode 信封，再按模型路由到 provider。
+- OpenAI 兼容后端会做 Anthropic <-> OpenAI 消息和工具调用转换。
+- 空回合会有有限重试；下游断开时会中止上游请求。
+
+## 8. 环境变量
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `UC_CONFIG` | 自动查找 | 配置文件路径 |
+| `UC_LISTEN_HOST` | `127.0.0.1` | 监听地址 |
+| `UC_LISTEN_PORT` | `8141` | 监听端口 |
+| `UC_UPSTREAM` | `https://api.anthropic.com` | 默认 Anthropic 上游 |
+| `UC_MAX_TOKENS` | `64000` | `max_tokens` 下限 |
+| `UC_FORCE_EFFORT` | `xhigh` | 强制 effort；空字符串表示关闭 |
+| `UC_FORCE_THINKING` | `1` | 是否强制 adaptive thinking |
+| `UC_INJECT_REMINDER` | `1` | 是否注入 UltraCode 系统提醒 |
+| `UC_FORCE_1M` | `0` | 是否对所有请求强制 1M |
+| `UC_EMPTY_RETRY_ATTEMPTS` | `2` | 空回合重试次数 |
+| `UC_EMPTY_RETRY_BACKOFF` | `0.75` | 空回合重试退避秒数 |
+| `UC_VERBOSE` | `0` | 输出更详细日志 |
+| `UC_LOG` | 空 | 追加日志文件路径 |
+| `CODEX_HOME` | `~/.codex` | Codex 登录文件目录 |
+| `UC_CODEX_BASE_URL` | ChatGPT Codex API | Codex 上游 |
+| `CURSOR_AGENT_BIN` | PATH / `~/.local/bin` | cursor-agent 路径 |
+| `CURSOR_AGENT_WORKSPACE` | 当前目录 | Cursor Agent 工作目录 |
+| `CURSOR_AGENT_TIMEOUT` | `240` | Cursor Agent 超时秒数 |
+
+`ccmodel.env` 会被启动器和 doctor 加载，适合放 `${ENV_VAR}` 所需的密钥。
+
+## 9. 架构与文件地图
+
+| 文件/目录 | 作用 |
+|-----------|------|
+| `bin/ccmodel.mjs` | 跨平台启动器 |
+| `scripts/doctor.ts` | 环境、配置与离线自测检查 |
+| `src/main.ts` | CLI 入口、配置解析、HTTP 服务启动 |
+| `src/server.ts` | HTTP 路由、请求上下文、provider 分发 |
+| `src/config/` | 配置加载、JSONC 解析、归一化、校验、类型 |
+| `src/core/` | 环境变量、日志、id、运行时类型、PATH 查找 |
+| `src/net/` | HTTP 客户端、请求头处理、SSE 解析、Anthropic 输出 |
+| `src/pipeline/` | UltraCode 信封、`[1m]`、模型发现、翻译、重试 |
+| `src/providers/` | Anthropic、OpenAI 兼容、Codex、Cursor provider |
+| `test/proxy.test.ts` | 全离线集成与单元测试 |
+
+## 10. 排错
+
+| 现象 | 处理 |
+|------|------|
+| `/model` 看不到模型 | 运行 `npm run doctor`；确认 `config.jsonc` 可解析；重启 Claude Code |
+| `[1m]` 选项不存在 | 该模型的 `model` id 结尾必须带 `[1m]`，如 `"MiniMax-M3[1m]"` |
+| `[1m]` 仍像 20 万 | 用 `UC_VERBOSE=1` 确认日志中 `want1m=true`；再确认账号/模型本身具备 1M 权限 |
+| OpenAI 后端 401 | 检查 `key` / `${ENV_VAR}` / `ccmodel.env` |
+| OpenAI 后端拒绝 `max_tokens` | 给该模型设置较小的 `max_output_tokens` |
+| Codex 不可用 | 先运行 `codex login`；再用 `npm run doctor` 检查 |
+| Cursor 超时 | 确认 `cursor-agent` 已安装并登录；代理环境异常时可尝试 `CURSOR_AGENT_NO_PROXY=1` |
+| 端口被占用 | 修改 `port` 或 `UC_LISTEN_PORT`，或停止旧的代理进程 |
+
+## 11. 开发与测试
+
+```bash
+npm run build
+npm run typecheck
+npm test
+npm run doctor -- --ci
+```
+
+测试是全离线的（32 个用例，内置 mock backend），不需要真实 API key 或网络。
+
+## 12. 给 AI 助手的执行清单
+
+当你代用户安装或配置 ccmodel：
+
+1. 确认 `node` 与 `claude` 可用。
+2. 运行 `npm install`、`npm run build`、`npm test`。
+3. 复制 `config.example.jsonc` 到 `config.jsonc`。
+4. 删除用户不需要的示例模型。每条至少要有 `model`；常见情况是 `{ model, url, key }`。
+5. 只给真正支持 1M 的模型在 `model` 结尾加 `[1m]` 后缀；codex/cursor 需要 `"api"`。
+6. 不要提交 `config.jsonc` 或 `ccmodel.env`。
+7. 修改后运行 `npm run doctor`。
+
+## 13. 卸载
+
+```bash
+npm run uninstall
+```
+
+这会停止 ccmodel 代理并移除桌面启动器和会话状态。你的全局 Claude Code 配置不会被修改。

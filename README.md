@@ -17,12 +17,12 @@ on Node's built-ins — nothing to install just to run it — and its headline
 capability is:
 
 > ### The `[1m]` guarantee
-> Add `[1m]` to any model and it **actually reaches a 1,000,000-token context
-> window** — no silent fallback to 200K. The proxy injects the
+> Pick a configured `[1m]` model and it **actually reaches a 1,000,000-token
+> context window** — no silent fallback to 200K. The proxy injects the
 > `anthropic-beta: context-1m-2025-08-07` header on every request that needs it,
 > even when Claude Code drops it on the way in (a real, recurring bug in
 > subagents, the `--model` flag, and gateway routes). See
-> **[docs/ONE_MILLION_CONTEXT.md](docs/ONE_MILLION_CONTEXT.md)**.
+> **[docs/MANUAL.md](docs/MANUAL.md#6-the-1m-1m-context-guarantee)**.
 
 ## Why this exists
 
@@ -81,30 +81,41 @@ npm run launch          # == node bin/ccmodel.mjs
 Everything is in one file: **`config.jsonc`** (copied from
 `config.example.jsonc`). It's JSONC — `//` and `/* */` comments and trailing
 commas are fine. **The whole config is a single list of models** — one entry per
-model you want in `/model`. Only `name` is required; everything else is inferred:
+model you want in `/model`. In the common case an entry is just three fields:
+
+```jsonc
+{ "model": "<id>", "url": "<base url>", "key": "<api key>" }
+```
+
+Only `model` is required; everything else is inferred:
 
 | You write | The proxy infers |
 |-----------|------------------|
-| `name` (required) | the `/model` display name **and** the id `claude-<slug(name)>` (Claude Code only keeps `claude`/`anthropic` ids) |
+| `model` (required) | the backend id sent upstream **and** the `/model` id `claude-<slug(model)>` (Claude Code only keeps `claude`/`anthropic` ids). A trailing **`[1m]`** marks it a 1M model. |
 | `url` | the **backend kind**: `…/anthropic` → passthrough, anything else → OpenAI-compatible. Omit for real Claude. |
 | `key` | the auth header — wrapped as `Authorization: Bearer <key>` (or pass a literal `"x-api-key: …"`). Omit to reuse Claude Code's own credential. |
-| *(nothing)* | a `<name>[1m]` 1M-context variant, advertised automatically |
+
+**1M is one character.** Add `[1m]` to the model id and that pick runs at a
+guaranteed 1,000,000-token window; leave it off for the standard 200K. The suffix
+is stripped before the id reaches the backend, so only add it to models that
+really support 1M. One entry = one `/model` pick.
 
 ### Verified example: DeepSeek (Anthropic-native endpoint)
 
 DeepSeek ships a native Anthropic-compatible endpoint, so a `…/anthropic` url is
 auto-detected as a **passthrough** — tools, streaming and the model's `thinking`
-blocks all work as-is. Verified live end-to-end (non-stream, stream, and `[1m]`):
+blocks all work as-is. Verified live end-to-end for non-stream and stream paths:
 
 ```jsonc
 {
   "models": [
-    { "name": "DeepSeek V4 Flash", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}", "model": "deepseek-v4-flash" },
-    { "name": "DeepSeek V4 Pro",   "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}", "model": "deepseek-v4-pro" }
+    { "model": "deepseek-v4-flash", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}" },
+    { "model": "deepseek-v4-pro",   "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}" }
   ]
 }
 ```
 
+Want a prettier label in the menu? Add an optional `"name": "DeepSeek V4 Pro"`.
 Put keys inline (gitignored) or as `${ENV_VAR}` — export them or drop them into a
 gitignored `ccmodel.env` the launcher loads.
 
@@ -116,18 +127,16 @@ The kind is inferred from `url` (or forced with `api`):
 |-----------------|-----------------------------------------------------------------|-------|
 | Anthropic passthrough | no `url` (real Claude), or a `…/anthropic` url (DeepSeek, any Anthropic-compatible endpoint) | nothing, or `key`/`url` |
 | OpenAI-compatible | any other `url` — MiniMax, OpenRouter, OpenAI, Ollama, local llama.cpp (tools translated both ways) | `key` (a local server can omit it) |
-| Codex (`"api": "codex"`) | GPT-5.5 via a ChatGPT/Codex login (no API key)            | `codex login` once |
-| Cursor (`"api": "cursor"`) | Cursor Composer (experimental)                          | `cursor-agent login` |
+| Codex (`"api": "codex"`) | GPT-5.5 via a ChatGPT/Codex login (no API key)            | `codex login` once, plus `"api": "codex"` (no url to infer from) |
+| Cursor (`"api": "cursor"`) | Cursor Composer (experimental)                          | `cursor-agent login`, plus `"api": "cursor"` |
 
 ### Per-model options
 
-All optional, alongside `name`/`url`/`key`/`model`:
+All optional, alongside `model`/`url`/`key`:
 
+- `name` — a prettier display label in `/model` (defaults to `model`).
 - `api` — force the backend kind (`anthropic` / `openai` / `codex` / `cursor`)
-  instead of inferring it from `url`.
-- `id` — override the auto id (must start with `claude`/`anthropic`, else it's prefixed).
-- `1m` — `true` (default: advertise a `[1m]` variant), `"force"` (always 1M), or
-  `false` (no variant).
+  instead of inferring it from `url`. Required for codex/cursor (they have no url).
 - `effort` — set a different effort level, or `false` to stop forcing effort on a
   strict backend.
 - `max_output_tokens` — completion cap for OpenAI-compatible backends (default 8192).
@@ -139,12 +148,15 @@ All optional, alongside `name`/`url`/`key`/`model`:
 
 | Want | Do this |
 |------|---------|
-| 1M only when *you* pick it | Pick the **`<model>[1m]`** entry in `/model` — advertised automatically for every model. |
-| Skip the `[1m]` variant for a model | `"1m": false` on that entry. |
-| 1M *always* for one model | `"1m": "force"` (advertises only the `[1m]` pick). |
+| A 1M pick for one model | Add `[1m]` to its `model` id, e.g. `"model": "MiniMax-M3[1m]"`. |
+| Both a 200K *and* a 1M pick | Add two entries — one `"X"` and one `"X[1m]"`. |
+| Standard-only model | Leave the `[1m]` suffix off. |
 | 1M *always*, everywhere | Top-level `"force_1m": true` (only if every backend supports it). |
 
-Full detail: [docs/ONE_MILLION_CONTEXT.md](docs/ONE_MILLION_CONTEXT.md).
+A `[1m]` model is guaranteed 1M end-to-end: even if Claude Code drops the beta
+header or the suffix on the way in, the proxy re-adds the
+`anthropic-beta: context-1m-2025-08-07` header on every request for it. Full
+detail: [docs/MANUAL.md](docs/MANUAL.md#6-the-1m-1m-context-guarantee).
 
 ## Architecture
 
@@ -172,7 +184,7 @@ Claude Code → server.ts (thin HTTP) → envelope/[1m] transform → Provider (
   warnings); `/healthz` reports version, providers, and the 1M policy; verbose
   logs carry a per-request id and timing.
 
-File-by-file map: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
+File-by-file map: [docs/MANUAL.md](docs/MANUAL.md#9-architecture-and-file-map).
 
 ## Develop / test
 
@@ -182,25 +194,21 @@ npm test          # build + run the offline self-test (node:test, no network/key
 npm run doctor    # validate environment + config, then run the self-test
 ```
 
-The self-test (23 cases, all offline) covers discovery + `[1m]` variant
-advertisement, the UltraCode envelope, the 1M beta-header guarantee, per-model
-effort overrides, the provider registry, config validation + normalization,
+The self-test (32 cases, all offline) covers `[1m]`-suffix parsing + 1M discovery
+advertisement, config normalization (id/type/auth inference, dedup, the `[1m]`
+→ `force1m` mapping), the UltraCode envelope, the 1M beta-header guarantee (via
+suffix, per-model force, global flag, and incoming header), per-model effort
+overrides, the provider registry, config validation, the `/v1/models` merge,
 Anthropic⇄OpenAI tool translation, the strict-backend tool-adjacency fix, and
 empty-turn retry.
 
 ## Docs
 
-Every doc is bilingual — **English** and **简体中文**.
+The topic docs have been consolidated into one bilingual manual.
 
 | Doc | EN | 中文 |
 |-----|----|----|
-| Usage reference (commands, recipes, env vars) | [USAGE.md](docs/USAGE.md) | [中文](docs/USAGE.zh-CN.md) |
-| The `[1m]` 1M-context guarantee | [ONE_MILLION_CONTEXT.md](docs/ONE_MILLION_CONTEXT.md) | [中文](docs/ONE_MILLION_CONTEXT.zh-CN.md) |
-| Mechanism + architecture + file map | [HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | [中文](docs/HOW_IT_WORKS.zh-CN.md) |
-| Setup guide | [SETUP.md](docs/SETUP.md) | [中文](docs/SETUP.zh-CN.md) |
-| Add a backend to `/model` | [ADD_A_MODEL.md](docs/ADD_A_MODEL.md) | [中文](docs/ADD_A_MODEL.zh-CN.md) |
-| Troubleshooting | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | [中文](docs/TROUBLESHOOTING.zh-CN.md) |
-| AI install/config runbook | [AGENTS.md](AGENTS.md) | [中文](AGENTS.zh-CN.md) |
+| System manual: setup, recipes, 1M, env vars, architecture, troubleshooting | [MANUAL.md](docs/MANUAL.md) | [中文](docs/MANUAL.zh-CN.md) |
 
 ## License
 

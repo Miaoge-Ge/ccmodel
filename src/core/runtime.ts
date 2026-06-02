@@ -1,8 +1,7 @@
 /** Runtime + per-request context types shared across the server and providers. */
 import type { IncomingHttpHeaders } from "node:http";
 import type { EnvelopeSettings } from "../pipeline/envelope.js";
-import type { Route, Slot } from "../config/types.js";
-import type { DiscoveryModel } from "../pipeline/models.js";
+import type { DiscoveryModel, Route, Slot } from "../config/types.js";
 
 /** Process-wide state, built once at startup. */
 export interface ProxyContext {

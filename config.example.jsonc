@@ -1,15 +1,22 @@
 {
   // ── ccmodel config ──────────────────────────────────────────────────────
   // The WHOLE config is just a list of models. Each one shows up in Claude
-  // Code's /model menu. Only `name` is required — everything else is inferred:
-  //   • id     →  claude-<slug(name)>      (Claude Code only keeps claude/anthropic ids)
-  //   • type   →  from `url`               ("…/anthropic" = passthrough, else OpenAI-compatible)
-  //   • auth   →  `key` wrapped as `Authorization: Bearer <key>`
+  // Code's /model menu. A model entry is, in the common case, just three fields:
   //
-  // 1M context is OPT-IN. A model is standard (200K) unless you add "1m":
-  //   "1m": true     also advertise a "<name>[1m]" 1M pick (base stays 200K)
-  //   "1m": "force"  this model is always 1M (only the [1m] pick is shown)
-  // Don't add "1m" to a model that isn't actually 1M-capable.
+  //     { "model": "<id>", "url": "<base url>", "key": "<api key>" }
+  //
+  // Everything else is inferred:
+  //   • id    →  claude-<slug(model)>   (Claude Code only keeps claude/anthropic ids)
+  //   • type  →  from `url`             ("…/anthropic" = passthrough, else OpenAI-compatible)
+  //   • auth  →  `key` wrapped as `Authorization: Bearer <key>`
+  //
+  // 1M CONTEXT: add a `[1m]` suffix to the model id. With it, that model runs at
+  // a guaranteed 1,000,000-token window; without it, the standard 200K. That's
+  // the only switch — one entry = one /model pick.
+  //   "model": "MiniMax-M3"       → standard 200K pick
+  //   "model": "MiniMax-M3[1m]"   → 1M pick (the suffix is stripped before it
+  //                                  reaches the backend; only add it to models
+  //                                  that really support 1M)
   //
   // Copy this file to config.jsonc and edit THAT (config.jsonc is gitignored, so
   // your keys never get committed). JSONC: // and /* */ comments + trailing
@@ -23,40 +30,37 @@
   // "force_1m": false,     // force 1M on EVERY request (only if all backends support it)
 
   "models": [
-    // 1) Real Claude — no url/key needed; uses your existing Claude Code login.
-    //    Opus 4.8 supports 1M, so "1m": true adds a guaranteed-1M "[1m]" pick.
-    { "name": "Claude Opus 4.8", "model": "claude-opus-4-8", "1m": true },
+    // 1) Real Claude — no url/key; uses your existing Claude Code login. Opus 4.8
+    //    supports 1M, so the `[1m]` suffix gives a guaranteed-1M pick.
+    { "model": "claude-opus-4-8[1m]", "name": "Claude Opus 4.8 (1M)" },
 
     // 2) DeepSeek — native Anthropic endpoint. A "…/anthropic" url is detected as
     //    a passthrough, so tools + streaming + the model's thinking blocks all
     //    work as-is. `key` is auto-wrapped as `Authorization: Bearer <key>`.
-    //    DeepSeek isn't 1M, so no "1m" flag here.
     {
-      "name": "DeepSeek V4 Pro",
+      "model": "deepseek-v4-pro",
       "url": "https://api.deepseek.com/anthropic",
-      "key": "${DEEPSEEK_API_KEY}",
-      "model": "deepseek-v4-pro"
+      "key": "${DEEPSEEK_API_KEY}"
     },
 
     // 3) MiniMax-M3 — OpenAI-compatible (a "…/v1" url is detected as openai). The
     //    proxy translates Anthropic⇄OpenAI (tools both ways). M3 is natively ~1M,
-    //    so "1m": "force". `body` passes provider params; reasoning_split keeps
-    //    <think> out of the answer.
+    //    so the `[1m]` suffix advertises it as 1M. `body` passes provider params;
+    //    reasoning_split keeps <think> out of the answer.
     {
-      "name": "MiniMax M3",
+      "model": "MiniMax-M3[1m]",
       "url": "https://api.minimax.io/v1",
       "key": "${MINIMAX_API_KEY}",
-      "model": "MiniMax-M3",
       "max_output_tokens": 64000,
-      "1m": "force",
       "body": { "reasoning_split": true }
     },
 
     // 4) GPT-5.5 via a ChatGPT/Codex login (no API key). Run `codex login` once.
-    { "name": "GPT-5.5", "api": "codex", "model": "gpt-5.5" },
+    //    `api` is required because there's no url to infer the kind from.
+    { "model": "gpt-5.5", "api": "codex" },
 
     // 5) A local OpenAI-compatible server (Ollama / llama.cpp / LM Studio). No key
-    //    needed, and not 1M — so no "1m" flag.
-    { "name": "Local", "url": "http://127.0.0.1:11434/v1", "model": "your-local-model" }
+    //    needed, and not 1M — so no `[1m]` suffix.
+    { "model": "your-local-model", "url": "http://127.0.0.1:11434/v1" }
   ]
 }

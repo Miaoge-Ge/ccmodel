@@ -16,11 +16,11 @@ ccmodel 是一个轻量、几乎零依赖的 **TypeScript/Node** 代理 —— �
 （运行它无需任何额外安装），它最核心的能力是：
 
 > ### `[1m]` 保证
-> 给任意模型加上 `[1m]`，它就会**真正用上 1,000,000 token 的上下文窗口** —— 不会再
+> 选择一个已配置的 `[1m]` 模型，它就会**真正用上 1,000,000 token 的上下文窗口** —— 不会再
 > 悄悄退回到 20 万。代理会在每个需要的请求上注入
 > `anthropic-beta: context-1m-2025-08-07` 头部，**即使 Claude Code 在传入途中把它丢掉了**
 > （子代理、`--model` 参数、网关路由里都真实存在这种丢头部的 bug）。详见
-> **[docs/ONE_MILLION_CONTEXT.zh-CN.md](docs/ONE_MILLION_CONTEXT.zh-CN.md)**。
+> **[docs/MANUAL.zh-CN.md](docs/MANUAL.zh-CN.md)**。
 
 ## 为什么需要它
 
@@ -73,30 +73,40 @@ npm run launch          # 等价于 node bin/ccmodel.mjs
 
 一切都在一个文件里：**`config.jsonc`**（从 `config.example.jsonc` 复制而来）。它是 JSONC ——
 支持 `//`、`/* */` 注释和尾逗号。**整个配置就是一个模型列表** —— 你想在 `/model` 里看到的
-每个模型写一条。只有 `name` 是必填的，其余全部自动推断：
+每个模型写一条。常见情况下，一条只要三个字段：
+
+```jsonc
+{ "model": "<模型 id>", "url": "<基础 url>", "key": "<API key>" }
+```
+
+只有 `model` 是必填的，其余全部自动推断：
 
 | 你写的 | 代理推断出 |
 |--------|-----------|
-| `name`（必填） | `/model` 里的显示名 **以及** id `claude-<slug(name)>`（Claude Code 只保留 `claude`/`anthropic` 开头的 id） |
+| `model`（必填） | 发往上游的后端 id **以及** `/model` 里的 id `claude-<slug(model)>`（Claude Code 只保留 `claude`/`anthropic` 开头的 id）。结尾带 **`[1m]`** 即标记为 1M 模型。 |
 | `url` | **后端类型**：`…/anthropic` → 直通；其他 → OpenAI 兼容。真·Claude 则省略不写。 |
 | `key` | 鉴权头 —— 包装成 `Authorization: Bearer <key>`（也可直接写 `"x-api-key: …"`）。省略则复用 Claude Code 自己的凭证。 |
-| *(什么都不写)* | 一个 `<name>[1m]` 的 100 万上下文变体，自动出现在菜单里 |
+
+**1M 只差一个后缀。** 给 `model` id 结尾加上 `[1m]`，该选项就以「保证」的 1,000,000 token
+窗口运行；不加则是标准 20 万。后缀会在 id 发往后端前被剥掉，所以只给真正支持 1M 的模型加。
+一条 = 一个 `/model` 选项。
 
 ### 已验证示例：DeepSeek（原生 Anthropic 端点）
 
 DeepSeek 自带一个原生兼容 Anthropic 的端点，所以 `…/anthropic` 的 url 会被自动识别为
 **passthrough（直通）** —— 工具调用、流式、模型的 `thinking` 思考块全都原生可用。本示例已
-端到端实测通过（非流式、流式、以及 `[1m]`）：
+端到端实测通过（非流式与流式路径）：
 
 ```jsonc
 {
   "models": [
-    { "name": "DeepSeek V4 Flash", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}", "model": "deepseek-v4-flash" },
-    { "name": "DeepSeek V4 Pro",   "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}", "model": "deepseek-v4-pro" }
+    { "model": "deepseek-v4-flash", "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}" },
+    { "model": "deepseek-v4-pro",   "url": "https://api.deepseek.com/anthropic", "key": "${DEEPSEEK_API_KEY}" }
   ]
 }
 ```
 
+想在菜单里显示更好看的名字？加一个可选的 `"name": "DeepSeek V4 Pro"`。
 key 可以直接写在文件里（已被 gitignore），也可以用 `${ENV_VAR}` —— 通过环境变量导出，或写进
 一个被 gitignore 的 `ccmodel.env`（启动器会加载它）。
 
@@ -108,16 +118,16 @@ key 可以直接写在文件里（已被 gitignore），也可以用 `${ENV_VAR}
 |------|----------|------|
 | Anthropic 直通 | 不写 `url`（真·Claude），或 `…/anthropic` 的 url（DeepSeek、任意兼容 Anthropic 的端点） | 无，或 `key`/`url` |
 | OpenAI 兼容 | 其他任意 `url` —— MiniMax、OpenRouter、OpenAI、Ollama、本地 llama.cpp（工具会双向转换） | `key`（本地服务可省略） |
-| Codex（`"api": "codex"`） | 通过 ChatGPT/Codex 登录使用 GPT-5.5（无需 API key） | 跑一次 `codex login` |
-| Cursor（`"api": "cursor"`） | Cursor Composer（实验性） | `cursor-agent login` |
+| Codex（`"api": "codex"`） | 通过 ChatGPT/Codex 登录使用 GPT-5.5（无需 API key） | 跑一次 `codex login`，并写 `"api": "codex"`（没有 url 可推断） |
+| Cursor（`"api": "cursor"`） | Cursor Composer（实验性） | `cursor-agent login`，并写 `"api": "cursor"` |
 
 ### 每个模型的可选项
 
-都是可选的，和 `name`/`url`/`key`/`model` 并列：
+都是可选的，和 `model`/`url`/`key` 并列：
 
-- `api` —— 强制后端类型（`anthropic` / `openai` / `codex` / `cursor`），不再从 `url` 推断。
-- `id` —— 覆盖自动生成的 id（必须以 `claude`/`anthropic` 开头，否则会被加前缀）。
-- `1m` —— `true`（默认：广告一个 `[1m]` 变体）、`"force"`（始终 1M）、或 `false`（不广告变体）。
+- `name` —— `/model` 里更好看的显示名（默认就是 `model`）。
+- `api` —— 强制后端类型（`anthropic` / `openai` / `codex` / `cursor`），不再从 `url` 推断；
+  codex/cursor 必填（它们没有 url 可推断）。
 - `effort` —— 设置另一个 effort 等级，或设为 `false` 以对严格后端停止强制 effort。
 - `max_output_tokens` —— OpenAI 兼容后端的补全上限（默认 8192）。
 - `body` —— 合并进每个 OpenAI 兼容请求的额外参数（如 MiniMax-M3 的
@@ -128,12 +138,14 @@ key 可以直接写在文件里（已被 gitignore），也可以用 `${ENV_VAR}
 
 | 你想要 | 这样做 |
 |--------|--------|
-| 仅在*你主动选择*时用 1M | 在 `/model` 里选 **`<模型>[1m]`** 条目 —— 每个模型都会自动广告它。 |
-| 某个模型不要 `[1m]` 变体 | 给该条目加 `"1m": false`。 |
-| 某个模型*始终*用 1M | `"1m": "force"`（只广告 `[1m]` 选项）。 |
+| 某个模型的 1M 选项 | 在它的 `model` id 结尾加 `[1m]`，如 `"model": "MiniMax-M3[1m]"`。 |
+| 同一模型同时要 200K *和* 1M 两个选项 | 写两条 —— 一条 `"X"`、一条 `"X[1m]"`。 |
+| 标准上下文模型 | 不加 `[1m]` 后缀即可。 |
 | *全部*请求始终用 1M | 顶层 `"force_1m": true`（仅当所有后端都支持时）。 |
 
-详见 [docs/ONE_MILLION_CONTEXT.zh-CN.md](docs/ONE_MILLION_CONTEXT.zh-CN.md)。
+`[1m]` 模型端到端「保证」1M：即便 Claude Code 在传入途中把 beta 头部或后缀丢掉，代理也会在
+每个相关请求上把 `anthropic-beta: context-1m-2025-08-07` 头部补回去。详见
+[docs/MANUAL.zh-CN.md](docs/MANUAL.zh-CN.md)。
 
 ## 架构
 
@@ -157,7 +169,7 @@ Claude Code → server.ts（轻量 HTTP）→ 信封/[1m] 变换 → Provider（
 - **校验 + 可观测性。** 启动时校验配置（错误 + 警告）；`/healthz` 报告版本、providers 和 1M
   策略；verbose 日志带有每请求 id 和耗时。
 
-逐文件说明见 [docs/HOW_IT_WORKS.zh-CN.md](docs/HOW_IT_WORKS.zh-CN.md)。
+逐文件说明见 [docs/MANUAL.zh-CN.md](docs/MANUAL.zh-CN.md)。
 
 ## 开发 / 测试
 
@@ -167,23 +179,18 @@ npm test          # 构建并运行离线自测（node:test，无需网络/密�
 npm run doctor    # 校验环境与配置，然后运行自测
 ```
 
-自测（23 个用例，全部离线）覆盖：模型发现 + `[1m]` 变体广告、UltraCode 信封、1M beta 头部保证、
-每模型 effort 覆盖、Provider 注册表、配置校验与归一化、Anthropic⇄OpenAI 工具转换、严格后端的
-工具相邻性修复，以及空回合重试。
+自测（32 个用例，全部离线）覆盖：`[1m]` 后缀解析 + 1M 模型发现广告、配置归一化（id/类型/鉴权
+推断、id 去重、`[1m]` → `force1m` 映射）、UltraCode 信封、1M beta 头部保证（来自后缀、每模型
+强制、全局开关、传入头部四种途径）、每模型 effort 覆盖、Provider 注册表、配置校验、
+`/v1/models` 合并、Anthropic⇄OpenAI 工具转换、严格后端的工具相邻性修复，以及空回合重试。
 
 ## 文档
 
-每篇文档都有**简体中文**和**英文**两个版本。
+主题文档已经合并成一本中英文手册。
 
 | 文档 | 中文 | EN |
 |------|------|----|
-| 使用方法参考（命令、范例、环境变量） | [中文](docs/USAGE.zh-CN.md) | [EN](docs/USAGE.md) |
-| `[1m]` 100 万上下文保证 | [中文](docs/ONE_MILLION_CONTEXT.zh-CN.md) | [EN](docs/ONE_MILLION_CONTEXT.md) |
-| 机制 + 架构 + 文件地图 | [中文](docs/HOW_IT_WORKS.zh-CN.md) | [EN](docs/HOW_IT_WORKS.md) |
-| 安装指南 | [中文](docs/SETUP.zh-CN.md) | [EN](docs/SETUP.md) |
-| 把后端加进 `/model` | [中文](docs/ADD_A_MODEL.zh-CN.md) | [EN](docs/ADD_A_MODEL.md) |
-| 排错 | [中文](docs/TROUBLESHOOTING.zh-CN.md) | [EN](docs/TROUBLESHOOTING.md) |
-| AI 安装/配置手册 | [中文](AGENTS.zh-CN.md) | [EN](AGENTS.md) |
+| 系统手册：安装、配置、后端范例、1M、环境变量、架构、排错 | [中文](docs/MANUAL.zh-CN.md) | [EN](docs/MANUAL.md) |
 
 ## 许可
 
