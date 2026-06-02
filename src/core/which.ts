@@ -9,10 +9,7 @@ export function which(cmd: string): string | null {
     return existsSync(cmd) ? cmd : null;
   }
   const pathDirs = (process.env.PATH || "").split(delimiter).filter(Boolean);
-  const exts =
-    process.platform === "win32"
-      ? (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
-      : [""];
+  const exts = process.platform === "win32" ? (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
   for (const dir of pathDirs) {
     for (const ext of exts) {
       const candidate = join(dir, cmd + ext);

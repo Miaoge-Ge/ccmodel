@@ -33,12 +33,7 @@ export interface Provider {
  * `retry` defaults to true; cursor_agent opts out because re-running the
  * subprocess on an empty turn is expensive and rarely helps.
  */
-export async function emitEvents(
-  req: ProviderRequest,
-  makeEvents: EventFactory,
-  label: string,
-  retry = true,
-): Promise<void> {
+export async function emitEvents(req: ProviderRequest, makeEvents: EventFactory, label: string, retry = true): Promise<void> {
   const events = retry ? eventsWithRetry(makeEvents, label) : makeEvents();
   if (req.ctx.wantStream) await streamAnthropicFromEvents(req.res, events, req.ctx.modelId);
   else await jsonAnthropicFromEvents(req.res, events, req.ctx.modelId, (s, m) => sendError(req.res, s, m));

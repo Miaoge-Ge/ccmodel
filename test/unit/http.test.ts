@@ -8,11 +8,19 @@ import { applyAuthHeader, forwardRequestHeaders, flatten, HOP_BY_HOP } from "../
 
 function startServer(handler: Parameters<typeof createServer>[1]): Promise<{ base: string; server: Server }> {
   const server = createServer(handler);
-  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve({ base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, server })));
+  return new Promise((resolve) =>
+    server.listen(0, "127.0.0.1", () => resolve({ base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, server })),
+  );
 }
 
 test("forwardRequestHeaders drops hop-by-hop and forces identity encoding", () => {
-  const out = forwardRequestHeaders({ "content-type": "application/json", host: "x", connection: "keep-alive", "transfer-encoding": "chunked", "x-keep": "yes" });
+  const out = forwardRequestHeaders({
+    "content-type": "application/json",
+    host: "x",
+    connection: "keep-alive",
+    "transfer-encoding": "chunked",
+    "x-keep": "yes",
+  });
   assert.equal(out["x-keep"], "yes");
   assert.equal(out["content-type"], "application/json");
   assert.equal(out.host, undefined, "host stripped");

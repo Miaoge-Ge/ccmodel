@@ -122,12 +122,16 @@ async function main(): Promise<number> {
     const type = inferType(typeof e.url === "string" ? e.url : undefined, e.api);
     if (type === "codex_oauth") {
       const auth = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "auth.json");
-      existsSync(auth) ? ok(`model '${label}': Codex login found`) : note(`model '${label}': no ${auth} — run \`codex login\` before using it`);
+      existsSync(auth)
+        ? ok(`model '${label}': Codex login found`)
+        : note(`model '${label}': no ${auth} — run \`codex login\` before using it`);
       continue;
     }
     if (type === "cursor_agent") {
       const binp = process.env.CURSOR_AGENT_BIN || which("cursor-agent") || join(homedir(), ".local", "bin", "cursor-agent");
-      binp && existsSync(binp) ? ok(`model '${label}': cursor-agent found`) : note(`model '${label}': cursor-agent not found — install it and run \`cursor-agent login\` (experimental)`);
+      binp && existsSync(binp)
+        ? ok(`model '${label}': cursor-agent found`)
+        : note(`model '${label}': cursor-agent not found — install it and run \`cursor-agent login\` (experimental)`);
       continue;
     }
     const refs = new Set(referencedVars(e.key));
@@ -138,7 +142,9 @@ async function main(): Promise<number> {
       else fail(`model '${label}': ${v} is empty — set it (env or ccmodel.env) or inline the key`);
     }
     if (refs.size === 0 && typeof e.key === "string" && PLACEHOLDER.test(e.key)) {
-      usingExample ? note(`model '${label}': key is a placeholder — put your real key there`) : fail(`model '${label}': key is still a placeholder`);
+      usingExample
+        ? note(`model '${label}': key is a placeholder — put your real key there`)
+        : fail(`model '${label}': key is still a placeholder`);
     }
   }
 
@@ -146,7 +152,9 @@ async function main(): Promise<number> {
   // Match main.ts precedence: an explicit env var wins, else config, else default.
   const envPort = process.env.UC_LISTEN_PORT;
   const port = envPort !== undefined && envPort !== "" ? Number(envPort) || 8141 : Number(cfg.port) || 8141;
-  (await portFree(port)) ? ok(`port ${port} is free`) : note(`port ${port} already in use — a proxy may already be running (fine), or pick another`);
+  (await portFree(port))
+    ? ok(`port ${port} is free`)
+    : note(`port ${port} already in use — a proxy may already be running (fine), or pick another`);
 
   // 8. offline self-test (the end-to-end integration suite exercises the whole proxy)
   const testFile = join(REPO_ROOT, "dist", "test", "integration.test.js");

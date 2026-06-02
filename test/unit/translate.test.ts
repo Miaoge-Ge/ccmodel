@@ -23,7 +23,13 @@ function assertAdjacency(msgs: any[]): void {
 
 test("textFromAnthropicContent flattens strings, text + tool_result blocks", () => {
   assert.equal(textFromAnthropicContent("hi"), "hi");
-  assert.equal(textFromAnthropicContent([{ type: "text", text: "a" }, { type: "text", text: "b" }]), "a\nb");
+  assert.equal(
+    textFromAnthropicContent([
+      { type: "text", text: "a" },
+      { type: "text", text: "b" },
+    ]),
+    "a\nb",
+  );
   assert.equal(textFromAnthropicContent([{ type: "tool_result", content: "r" }]), "r");
   assert.equal(textFromAnthropicContent([{ type: "image" }]), "[image omitted]");
 });
@@ -52,7 +58,13 @@ test("rejected tool call: reply synthesized first, user comment after, adjacency
     messages: [
       { role: "user", content: "go" },
       assistantCalls("call_1"),
-      { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "rejected" }, { type: "text", text: "no" }] },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "call_1", content: "rejected" },
+          { type: "text", text: "no" },
+        ],
+      },
     ],
   }).messages;
   assertAdjacency(m);
@@ -69,7 +81,10 @@ test("partial tool replies: a stub is synthesized for the unanswered id", () => 
     ],
   }).messages;
   assertAdjacency(m);
-  assert.deepEqual(m.filter((x: any) => x.role === "tool").map((x: any) => x.tool_call_id), ["call_1", "call_2"]);
+  assert.deepEqual(
+    m.filter((x: any) => x.role === "tool").map((x: any) => x.tool_call_id),
+    ["call_1", "call_2"],
+  );
 });
 
 test("max_tokens and temperature pass through when present", () => {

@@ -33,7 +33,10 @@ test("a standard model stays 200K but still honors an explicit [1m] suffix", () 
 test("global force_1m and an incoming 1M beta header each flag want1m", () => {
   const { slotMap } = normalizeModels([{ model: "backend", api: "anthropic", url: "https://up" }]);
   assert.equal(transformMessagesBody(msg("claude-backend"), {}, slotMap, {}, { ...SETTINGS, force1m: true }).route.want1m, true);
-  assert.equal(transformMessagesBody(msg("claude-backend"), { "anthropic-beta": CONTEXT_1M_BETA }, slotMap, {}, SETTINGS).route.want1m, true);
+  assert.equal(
+    transformMessagesBody(msg("claude-backend"), { "anthropic-beta": CONTEXT_1M_BETA }, slotMap, {}, SETTINGS).route.want1m,
+    true,
+  );
 });
 
 test("per-model effort:false stops forcing effort (floor still applied)", () => {
@@ -78,7 +81,9 @@ test("transformMessagesBody passes a malformed body through untouched", () => {
 });
 
 test("openai_compat slot carries its body/headers/cap onto the route", () => {
-  const { slotMap } = normalizeModels([{ model: "m", url: "https://x/v1", key: "k", max_output_tokens: 1234, headers: { "X-H": "v" }, body: { reasoning_split: true } }]);
+  const { slotMap } = normalizeModels([
+    { model: "m", url: "https://x/v1", key: "k", max_output_tokens: 1234, headers: { "X-H": "v" }, body: { reasoning_split: true } },
+  ]);
   const { route } = transformMessagesBody(msg("claude-m"), {}, slotMap, {}, SETTINGS);
   assert.equal(route.type, "openai_compat");
   assert.equal(route.max_output_tokens, 1234);

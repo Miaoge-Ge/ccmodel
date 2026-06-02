@@ -18,6 +18,10 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Install dev deps
         run: npm install
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
       - name: Type-check + build
         run: npm run build
       - name: Offline self-test

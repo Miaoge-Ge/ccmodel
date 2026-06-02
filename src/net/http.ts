@@ -69,8 +69,7 @@ function once(opts: RequestOptions): Promise<UpstreamResponse> {
   const isHttps = u.protocol === "https:";
   const mod = isHttps ? httpsMod : httpMod;
   const timeoutMs = opts.timeoutMs ?? 600_000;
-  const bodyBuf =
-    opts.body == null ? null : Buffer.isBuffer(opts.body) ? opts.body : Buffer.from(opts.body, "utf-8");
+  const bodyBuf = opts.body == null ? null : Buffer.isBuffer(opts.body) ? opts.body : Buffer.from(opts.body, "utf-8");
 
   return new Promise<UpstreamResponse>((resolve, reject) => {
     if (opts.signal?.aborted) {

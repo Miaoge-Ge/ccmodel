@@ -1,7 +1,15 @@
 /** Unit tests for the [1m] suffix + 1M beta-header machinery. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseModelId, withOneMSuffix, ensure1mBetaHeader, headerRequests1m, CONTEXT_1M_BETA, ONE_MILLION, STANDARD_CONTEXT } from "../../src/pipeline/model1m.js";
+import {
+  parseModelId,
+  withOneMSuffix,
+  ensure1mBetaHeader,
+  headerRequests1m,
+  CONTEXT_1M_BETA,
+  ONE_MILLION,
+  STANDARD_CONTEXT,
+} from "../../src/pipeline/model1m.js";
 
 test("parseModelId splits the [1m] suffix (tolerant of case + whitespace)", () => {
   assert.deepEqual(parseModelId("claude-opus-4-8[1m]"), { baseId: "claude-opus-4-8", want1m: true });

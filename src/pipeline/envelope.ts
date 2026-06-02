@@ -103,8 +103,7 @@ export function transformMessagesBody(
   // Only "force" (or the [1m] suffix / global / incoming beta) forces 1M. A plain
   // `"1m": true` merely advertises the variant — the base id stays standard.
   const routeForces1m = slot?.force1m === true;
-  const want1m =
-    suffix1m || routeForces1m || settings.force1m || headerRequests1m(requestHeaders);
+  const want1m = suffix1m || routeForces1m || settings.force1m || headerRequests1m(requestHeaders);
 
   // Always send a clean (suffix-free) model id upstream: the backend id from the
   // slot, or the stripped base id for passthrough. Backends don't understand [1m].
@@ -142,9 +141,7 @@ export function transformMessagesBody(
   const effMaxFloor = typeof ov?.max_tokens === "number" ? ov.max_tokens : settings.maxTokensFloor;
 
   if (effEffort) {
-    const oc = (body.output_config && typeof body.output_config === "object"
-      ? (body.output_config as Json)
-      : {}) as Json;
+    const oc = (body.output_config && typeof body.output_config === "object" ? (body.output_config as Json) : {}) as Json;
     if (oc.effort !== effEffort) {
       oc.effort = effEffort;
       body.output_config = oc;

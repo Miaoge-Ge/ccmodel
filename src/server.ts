@@ -51,7 +51,10 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
       codex_login: codexAuthAvailable(),
       custom_models: rt.discoveryModels.map((m) => ({ id: m.id, display_name: m.display_name })),
       slots: Object.fromEntries(
-        Object.entries(rt.slotMap).map(([k, v]) => [k, { type: v.type || "anthropic", model: v.model, upstream: v.upstream || "(default)" }]),
+        Object.entries(rt.slotMap).map(([k, v]) => [
+          k,
+          { type: v.type || "anthropic", model: v.model, upstream: v.upstream || "(default)" },
+        ]),
       ),
     });
     return;
@@ -105,7 +108,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
 
   const provider = resolveProvider(route.type);
   if (isMessagesPost) {
-    vlog(`[${id}] ${method} ${path} model=${modelId || "?"} provider=${provider.type} stream=${wantStream} want1m=${Boolean(route.want1m)}`);
+    vlog(
+      `[${id}] ${method} ${path} model=${modelId || "?"} provider=${provider.type} stream=${wantStream} want1m=${Boolean(route.want1m)}`,
+    );
   }
   await provider.handle({ rt, ctx, res });
   if (isMessagesPost) vlog(`[${id}] done in ${Date.now() - ctx.startedAt}ms`);

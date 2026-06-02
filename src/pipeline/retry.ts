@@ -28,7 +28,6 @@ export async function* eventsWithRetry(
   attempts = ENV.EMPTY_RETRY_ATTEMPTS,
   backoff = ENV.EMPTY_RETRY_BACKOFF,
 ): AsyncGenerator<InternalEvent> {
-  let lastBuffer: InternalEvent[] = [];
   for (let attempt = 0; attempt <= attempts; attempt++) {
     let buffer: InternalEvent[] = [];
     let meaningful = false;
@@ -57,13 +56,13 @@ export async function* eventsWithRetry(
       for (const b of buffer) yield b;
       return;
     }
-    lastBuffer = buffer;
     if (attempt < attempts) {
       log(`${label}: empty turn, retrying (${attempt + 1}/${attempts})`);
       await sleep(backoff * (attempt + 1) * 1000);
       continue;
     }
-    for (const b of lastBuffer) yield b;
+    // Out of retries: surface the last (still empty-ish) turn rather than nothing.
+    for (const b of buffer) yield b;
     return;
   }
 }

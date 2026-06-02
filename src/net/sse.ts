@@ -57,10 +57,7 @@ export async function* oaiResponseToEvents(resp: UpstreamResponse): AsyncGenerat
         buf = buf.subarray(nl + 1);
         if (!line || !line.startsWith("data:")) continue;
         const payload = line.slice(5).trim();
-        if (payload === "[DONE]") {
-          buf = Buffer.alloc(0);
-          break outer;
-        }
+        if (payload === "[DONE]") break outer;
         let obj: Json;
         try {
           const p = JSON.parse(payload);

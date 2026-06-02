@@ -72,8 +72,7 @@ function readJson(req: IncomingMessage): Promise<any> {
  * wire formats, recording what it received so tests can assert on it.
  */
 export function createMockBackend(state: MockState): Server {
-  const lower = (req: IncomingMessage) =>
-    Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
+  const lower = (req: IncomingMessage) => Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
 
   return createMock((req: IncomingMessage, res: ServerResponse) => {
     const path = (req.url || "").split("?")[0] || "";
@@ -102,13 +101,20 @@ export function createMockBackend(state: MockState): Server {
         }
         if (body.stream === false) {
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ choices: [{ message: { content: "ok-1m" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2 } }));
+          res.end(
+            JSON.stringify({
+              choices: [{ message: { content: "ok-1m" }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 3, completion_tokens: 2 },
+            }),
+          );
           return;
         }
         res.writeHead(200, { "Content-Type": "text/event-stream" });
         sse({ choices: [{ delta: { content: "Hello " } }] });
         sse({ choices: [{ delta: { content: "world" } }] });
-        sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", function: { name: "get_weather", arguments: '{"city":' } }] } }] });
+        sse({
+          choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", function: { name: "get_weather", arguments: '{"city":' } }] } }],
+        });
         sse({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"Paris"}' } }] } }] });
         sse({ choices: [{ delta: {}, finish_reason: "tool_calls" }], usage: { prompt_tokens: 11, completion_tokens: 7 } });
         res.write("data: [DONE]\n\n");
@@ -119,7 +125,17 @@ export function createMockBackend(state: MockState): Server {
         state.seenAnth = body;
         state.seenAnthHeaders = lower(req);
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ id: "msg_x", type: "message", role: "assistant", model: body.model, content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } }));
+        res.end(
+          JSON.stringify({
+            id: "msg_x",
+            type: "message",
+            role: "assistant",
+            model: body.model,
+            content: [{ type: "text", text: "ok" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        );
         return;
       }
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -144,8 +160,23 @@ export function integrationConfig(mockBase: string): Config {
     max_tokens: 64000,
     models: [
       { model: "claude-opus-4-8", api: "anthropic" },
-      { model: "MiniMax-M3[1m]", api: "openai", url: mockBase + "/v1", key: "${MOCK_KEY}", max_output_tokens: 64000, body: { reasoning_split: true } },
-      { model: "mock-model", api: "openai", url: mockBase + "/v1", key: "${MOCK_KEY}", max_output_tokens: 1234, headers: { "X-Test-UA": "ccmodel/test" }, body: { reasoning_split: true } },
+      {
+        model: "MiniMax-M3[1m]",
+        api: "openai",
+        url: mockBase + "/v1",
+        key: "${MOCK_KEY}",
+        max_output_tokens: 64000,
+        body: { reasoning_split: true },
+      },
+      {
+        model: "mock-model",
+        api: "openai",
+        url: mockBase + "/v1",
+        key: "${MOCK_KEY}",
+        max_output_tokens: 1234,
+        headers: { "X-Test-UA": "ccmodel/test" },
+        body: { reasoning_split: true },
+      },
       { model: "retry-model", api: "openai", url: mockBase + "/v1", key: "${MOCK_KEY}" },
       { model: "nokey-model", api: "openai", url: mockBase + "/v1" },
     ],

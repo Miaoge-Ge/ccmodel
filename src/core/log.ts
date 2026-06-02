@@ -12,7 +12,7 @@ const REDACTIONS: Array<[RegExp, string]> = [
   // authorization / x-api-key / api-key header values (keeping a "Bearer " label)
   [/((?:x-api-key|api[_-]?key|authorization)["':=\s]+(?:bearer\s+)?)[^\s,"'}]{6,}/gi, "$1[redacted]"],
   // bare "Bearer <token>"
-  [/(bearer\s+)[A-Za-z0-9._\-]{6,}/gi, "$1[redacted]"],
+  [/(bearer\s+)[A-Za-z0-9._-]{6,}/gi, "$1[redacted]"],
   // common provider key shapes (sk-…, sk-ant-…, sk-proj-…) anywhere in the text
   [/\b(sk(?:-[a-z]+)?)-[A-Za-z0-9]{8,}/g, "$1-[redacted]"],
 ];

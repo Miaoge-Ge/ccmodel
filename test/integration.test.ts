@@ -37,7 +37,8 @@ test("UltraCode envelope is forced on passthrough", async () => {
   assert.equal(a.thinking.type, "adaptive");
   assert.ok(a.max_tokens >= 64000);
   const sys = a.system;
-  const hasReminder = typeof sys === "string" ? sys.includes("Ultracode is on:") : sys.some((b: any) => (b.text || "").includes("Ultracode is on:"));
+  const hasReminder =
+    typeof sys === "string" ? sys.includes("Ultracode is on:") : sys.some((b: any) => (b.text || "").includes("Ultracode is on:"));
   assert.ok(hasReminder);
   assert.ok(!(h.state.seenAnthHeaders["anthropic-beta"] || "").includes(CONTEXT_1M_BETA), "no 1M beta without [1m]");
 });

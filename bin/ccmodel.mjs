@@ -31,10 +31,15 @@ function which(cmd) {
   if (isAbsolute(cmd) || cmd.includes("/") || cmd.includes("\\")) return existsSync(cmd) ? cmd : null;
   const dirs = (process.env.PATH || "").split(delimiter).filter(Boolean);
   const exts = isWin ? (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
-  for (const d of dirs) for (const e of exts) {
-    const p = join(d, cmd + e);
-    try { if (existsSync(p) && statSync(p).isFile()) return p; } catch { /* ignore */ }
-  }
+  for (const d of dirs)
+    for (const e of exts) {
+      const p = join(d, cmd + e);
+      try {
+        if (existsSync(p) && statSync(p).isFile()) return p;
+      } catch {
+        /* ignore */
+      }
+    }
   return null;
 }
 
@@ -159,7 +164,14 @@ async function main() {
   const settings = join(stateBase, "ccmodel_settings.json");
   writeFileSync(
     settings,
-    JSON.stringify({ ultracode: true, env: { ANTHROPIC_BASE_URL: baseUrl, CLAUDE_CODE_WORKFLOWS: "1", CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1" } }, null, 2),
+    JSON.stringify(
+      {
+        ultracode: true,
+        env: { ANTHROPIC_BASE_URL: baseUrl, CLAUDE_CODE_WORKFLOWS: "1", CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1" },
+      },
+      null,
+      2,
+    ),
   );
 
   // 7. Start the proxy (unless one is already healthy on this port).
@@ -173,12 +185,19 @@ async function main() {
     if (child.pid) writeFileSync(pidFile, String(child.pid));
     let ok = false;
     for (let i = 0; i < 60; i++) {
-      if (await isHealthy(baseUrl)) { ok = true; break; }
+      if (await isHealthy(baseUrl)) {
+        ok = true;
+        break;
+      }
       await sleep(250);
     }
     if (!ok) {
       console.error(`Proxy did not become healthy on port ${port}. Log: ${logFile}`);
-      try { console.error(readFileSync(logFile, "utf8").split(/\r?\n/).slice(-20).join("\n")); } catch { /* ignore */ }
+      try {
+        console.error(readFileSync(logFile, "utf8").split(/\r?\n/).slice(-20).join("\n"));
+      } catch {
+        /* ignore */
+      }
       process.exit(1);
     }
   }
@@ -200,16 +219,42 @@ async function main() {
   }
 
   // 9. Launch Claude Code; stop the proxy when it exits.
-  const stop = () => { if (child && !child.killed) { try { child.kill(); } catch { /* ignore */ } } };
+  const stop = () => {
+    if (child && !child.killed) {
+      try {
+        child.kill();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
   process.on("exit", stop);
-  process.on("SIGINT", () => { stop(); process.exit(0); });
-  process.on("SIGTERM", () => { stop(); process.exit(0); });
+  process.on("SIGINT", () => {
+    stop();
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    stop();
+    process.exit(0);
+  });
 
-  const claudeEnv = { ...process.env, ANTHROPIC_BASE_URL: baseUrl, CLAUDE_CODE_WORKFLOWS: "1", CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1" };
+  const claudeEnv = {
+    ...process.env,
+    ANTHROPIC_BASE_URL: baseUrl,
+    CLAUDE_CODE_WORKFLOWS: "1",
+    CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
+  };
   console.log("Launching Claude Code (ccmodel). Open /model to pick a backend; the [1m] picks run at 1M context.");
   const cp = spawnInteractive(claude, ["--settings", settings, ...passthroughArgs], claudeEnv);
-  cp.on("exit", (code) => { stop(); process.exit(code ?? 0); });
-  cp.on("error", (e) => { console.error("Failed to launch claude:", e.message); stop(); process.exit(1); });
+  cp.on("exit", (code) => {
+    stop();
+    process.exit(code ?? 0);
+  });
+  cp.on("error", (e) => {
+    console.error("Failed to launch claude:", e.message);
+    stop();
+    process.exit(1);
+  });
 }
 
 main().catch((e) => {

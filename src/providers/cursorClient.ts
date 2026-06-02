@@ -197,7 +197,10 @@ export async function* streamEvents(params: CursorParams): AsyncGenerator<Intern
   for (const m of full.matchAll(MARKER_RE)) {
     try {
       const obj = JSON.parse(m[1]!);
-      toolCalls.push({ name: (isRecord(obj) && typeof obj.name === "string" ? obj.name : "") || "", arguments: JSON.stringify(isRecord(obj) ? obj.arguments ?? {} : {}) });
+      toolCalls.push({
+        name: (isRecord(obj) && typeof obj.name === "string" ? obj.name : "") || "",
+        arguments: JSON.stringify(isRecord(obj) ? (obj.arguments ?? {}) : {}),
+      });
     } catch {
       // ignore malformed marker
     }

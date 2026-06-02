@@ -56,7 +56,10 @@ test("oaiResponseToEvents: SSE stream → text deltas, assembled tool call, usag
       ]),
     ),
   );
-  const text = events.filter((e) => e.type === "text_delta").map((e: any) => e.text).join("");
+  const text = events
+    .filter((e) => e.type === "text_delta")
+    .map((e: any) => e.text)
+    .join("");
   assert.equal(text, "Hello");
   const tc = events.find((e) => e.type === "tool_call") as any;
   assert.equal(tc.name, "f");
@@ -70,7 +73,12 @@ test("oaiResponseToEvents: plain JSON response → text + tool call + usage", as
     oaiResponseToEvents(
       fakeResp("application/json", [
         JSON.stringify({
-          choices: [{ message: { content: "hi", tool_calls: [{ id: "c1", function: { name: "g", arguments: '{"a":1}' } }] }, finish_reason: "tool_calls" }],
+          choices: [
+            {
+              message: { content: "hi", tool_calls: [{ id: "c1", function: { name: "g", arguments: '{"a":1}' } }] },
+              finish_reason: "tool_calls",
+            },
+          ],
           usage: { prompt_tokens: 7, completion_tokens: 3 },
         }),
       ]),

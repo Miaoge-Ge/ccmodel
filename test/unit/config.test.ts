@@ -3,7 +3,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { normalizeModels, stripJsonc, stripUnderscoreKeys, parseConfigText, slug, inferType, wrapAuth, REPO_ROOT } from "../../src/config/config.js";
+import {
+  normalizeModels,
+  stripJsonc,
+  stripUnderscoreKeys,
+  parseConfigText,
+  slug,
+  inferType,
+  wrapAuth,
+  REPO_ROOT,
+} from "../../src/config/config.js";
 import { validateConfig } from "../../src/config/validate.js";
 import type { Config } from "../../src/config/types.js";
 
@@ -59,15 +68,16 @@ test("normalizeModels dedups colliding ids and skips entries with no model", () 
     { url: "https://c/v1" } as any,
     { model: "   " },
   ]);
-  assert.deepEqual(discoveryModels.map((m) => m.id), ["claude-x", "claude-x-2"]);
+  assert.deepEqual(
+    discoveryModels.map((m) => m.id),
+    ["claude-x", "claude-x-2"],
+  );
 });
 
 test("normalizeModels expands ${ENV} in url/key/model/headers/workspace", () => {
   process.env.T_URL = "https://env-host/v1";
   process.env.T_KEY = "env-secret";
-  const { slotMap } = normalizeModels([
-    { model: "m", url: "${T_URL}", key: "${T_KEY}", headers: { "X-H": "${T_KEY}" } },
-  ]);
+  const { slotMap } = normalizeModels([{ model: "m", url: "${T_URL}", key: "${T_KEY}", headers: { "X-H": "${T_KEY}" } }]);
   const s = slotMap["claude-m"]!;
   assert.equal(s.upstream, "https://env-host/v1");
   assert.equal(s.auth, "Bearer env-secret");
@@ -92,13 +102,15 @@ test("config helpers (slug/inferType/wrapAuth)", () => {
 });
 
 test("stripJsonc removes comments and trailing commas but not string contents", () => {
-  const obj = JSON.parse(stripJsonc(`{
+  const obj = JSON.parse(
+    stripJsonc(`{
     // line comment
     "url": "http://x/y", /* block */
     "note": "a // b /* c */ d,}",
     "arr": [1, 2,],
     "nested": { "ok": true, },
-  }`));
+  }`),
+  );
   assert.equal(obj.url, "http://x/y");
   assert.equal(obj.note, "a // b /* c */ d,}");
   assert.deepEqual(obj.arr, [1, 2]);
@@ -122,23 +134,58 @@ test("REPO_ROOT resolves to the repo root, not dist/", () => {
 });
 
 test("validateConfig requires model, flags unknown api / missing openai url / force_1m", () => {
-  const r = validateConfig({ force_1m: true, models: [{} as any, { model: "a", api: "openai" }, { model: "b", api: "bogus" } as any] } as Config);
-  assert.ok(r.errors.some((e) => e.includes("missing a string 'model'")), "entry without model errors");
-  assert.ok(r.errors.some((e) => e.includes("'a'") && e.includes("url")), "openai without url errors");
-  assert.ok(r.errors.some((e) => e.includes("unknown api")), "bad api errors");
-  assert.ok(r.warnings.some((w) => w.includes("force_1m")), "force_1m warned");
+  const r = validateConfig({
+    force_1m: true,
+    models: [{} as any, { model: "a", api: "openai" }, { model: "b", api: "bogus" } as any],
+  } as Config);
+  assert.ok(
+    r.errors.some((e) => e.includes("missing a string 'model'")),
+    "entry without model errors",
+  );
+  assert.ok(
+    r.errors.some((e) => e.includes("'a'") && e.includes("url")),
+    "openai without url errors",
+  );
+  assert.ok(
+    r.errors.some((e) => e.includes("unknown api")),
+    "bad api errors",
+  );
+  assert.ok(
+    r.warnings.some((w) => w.includes("force_1m")),
+    "force_1m warned",
+  );
 });
 
 test("validateConfig accepts codex/cursor without url (login-based)", () => {
-  const r = validateConfig({ models: [{ model: "gpt-5.5", api: "codex" }, { model: "composer-2.5", api: "cursor" }] } as Config);
+  const r = validateConfig({
+    models: [
+      { model: "gpt-5.5", api: "codex" },
+      { model: "composer-2.5", api: "cursor" },
+    ],
+  } as Config);
   assert.equal(r.errors.length, 0, "no url required for codex/cursor");
 });
 
 test("validateConfig warns on placeholder keys, duplicates, and bad port", () => {
-  const r = validateConfig({ port: 70000, models: [{ model: "x", url: "https://a/v1", key: "YOUR_KEY" }, { model: "x", url: "https://a/v1", key: "k" }] } as Config);
-  assert.ok(r.warnings.some((w) => w.includes("placeholder")), "placeholder key warned");
-  assert.ok(r.warnings.some((w) => w.includes("duplicate")), "duplicate model warned");
-  assert.ok(r.errors.some((e) => e.includes("port")), "out-of-range port errors");
+  const r = validateConfig({
+    port: 70000,
+    models: [
+      { model: "x", url: "https://a/v1", key: "YOUR_KEY" },
+      { model: "x", url: "https://a/v1", key: "k" },
+    ],
+  } as Config);
+  assert.ok(
+    r.warnings.some((w) => w.includes("placeholder")),
+    "placeholder key warned",
+  );
+  assert.ok(
+    r.warnings.some((w) => w.includes("duplicate")),
+    "duplicate model warned",
+  );
+  assert.ok(
+    r.errors.some((e) => e.includes("port")),
+    "out-of-range port errors",
+  );
 });
 
 test("validateConfig does NOT flag a ${ENV} key as a placeholder", () => {

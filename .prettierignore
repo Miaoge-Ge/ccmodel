@@ -1,0 +1,11 @@
+dist/
+node_modules/
+package-lock.json
+*.log
+.live/
+config.jsonc
+config.json
+ccmodel.env
+
+# Hand-authored bilingual prose — formatted by authors, not Prettier
+*.md

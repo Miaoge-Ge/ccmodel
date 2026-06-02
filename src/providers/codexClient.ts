@@ -65,7 +65,7 @@ function loadAuth(): Json {
 function decodeJwtClaims(token: string): Json {
   try {
     const payload = token.split(".")[1] ?? "";
-    const padded = payload + "=".repeat((-payload.length % 4 + 4) % 4);
+    const padded = payload + "=".repeat(((-payload.length % 4) + 4) % 4);
     const json = Buffer.from(padded.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
     const obj = JSON.parse(json);
     return isRecord(obj) ? obj : {};

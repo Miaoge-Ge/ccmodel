@@ -61,7 +61,15 @@ function installLinuxDesktop() {
     const path = join(desktop, name + ".desktop");
     writeFileSync(
       path,
-      ["[Desktop Entry]", "Type=Application", `Name=${name}`, `Comment=${comment}`, `Exec=${exec}`, "Terminal=true", "Categories=Development;"].join("\n") + "\n",
+      [
+        "[Desktop Entry]",
+        "Type=Application",
+        `Name=${name}`,
+        `Comment=${comment}`,
+        `Exec=${exec}`,
+        "Terminal=true",
+        "Categories=Development;",
+      ].join("\n") + "\n",
       "utf8",
     );
     chmodSync(path, 0o755);

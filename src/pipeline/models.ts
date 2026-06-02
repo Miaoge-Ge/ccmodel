@@ -18,9 +18,7 @@ function isRecord(v: unknown): v is Json {
  * fresh skeleton), appending any ids not already present.
  */
 export function mergeModelsResponse(upstream: unknown, custom: DiscoveryModel[]): Json {
-  const base: Json = isRecord(upstream)
-    ? upstream
-    : { data: [], has_more: false, first_id: null, last_id: null };
+  const base: Json = isRecord(upstream) ? upstream : { data: [], has_more: false, first_id: null, last_id: null };
   const data: unknown[] = Array.isArray(base.data) ? (base.data as unknown[]) : [];
   base.data = data;
   const existing = new Set<string>();

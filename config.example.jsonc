@@ -40,7 +40,7 @@
     {
       "model": "deepseek-v4-pro",
       "url": "https://api.deepseek.com/anthropic",
-      "key": "${DEEPSEEK_API_KEY}"
+      "key": "${DEEPSEEK_API_KEY}",
     },
 
     // 3) MiniMax-M3 — OpenAI-compatible (a "…/v1" url is detected as openai). The
@@ -52,7 +52,7 @@
       "url": "https://api.minimax.io/v1",
       "key": "${MINIMAX_API_KEY}",
       "max_output_tokens": 64000,
-      "body": { "reasoning_split": true }
+      "body": { "reasoning_split": true },
     },
 
     // 4) GPT-5.5 via a ChatGPT/Codex login (no API key). Run `codex login` once.
@@ -61,6 +61,6 @@
 
     // 5) A local OpenAI-compatible server (Ollama / llama.cpp / LM Studio). No key
     //    needed, and not 1M — so no `[1m]` suffix.
-    { "model": "your-local-model", "url": "http://127.0.0.1:11434/v1" }
-  ]
+    { "model": "your-local-model", "url": "http://127.0.0.1:11434/v1" },
+  ],
 }
