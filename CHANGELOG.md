@@ -17,6 +17,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Observability** — in-process metrics (requests by kind/status, errors, 1M
+  count, latency avg/max, uptime) exposed as a `metrics` snapshot on `/healthz`
+  and in Prometheus text format on a new `GET /metrics` endpoint.
 - **Inbound body size cap** (`UC_MAX_BODY_BYTES`, default 64 MiB) — the proxy
   returns `413 request_too_large` instead of buffering an unbounded upload.
 

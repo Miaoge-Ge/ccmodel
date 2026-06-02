@@ -330,6 +330,18 @@ backends are **not** sent the Claude-only `output_config`/`thinking` fields or t
 Workflow reminder — that would just add tokens and reference tooling the model
 can't use.
 
+### Endpoints
+
+| Path | What |
+|------|------|
+| `POST /v1/messages` | the proxied Messages API (envelope + `[1m]` + routing) |
+| `GET /v1/models` | discovery: upstream models merged with your configured ones |
+| `GET /healthz` (`/health`) | liveness + config summary (version, providers, 1M policy, slots) **and a `metrics` snapshot** |
+| `GET /metrics` | the same counters in Prometheus text format (requests by kind/status, errors, 1M count, latency avg/max, uptime) |
+
+`/healthz` and `/metrics` make the proxy observable instead of a black box; point
+a scraper at `/metrics` or just `curl` it.
+
 ### Gateway discovery (why your models appear in `/model`)
 
 When `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`, Claude Code calls
@@ -357,6 +369,7 @@ to the `cursor-agent` CLI.
 | `UC_UPSTREAM` | `https://api.anthropic.com` | Default Anthropic upstream (overrides config `upstream`). |
 | `UC_CONFIG` | auto | Path to the config file. |
 | `UC_MAX_TOKENS` | `64000` | `max_tokens` floor (overrides config `max_tokens`). |
+| `UC_MAX_BODY_BYTES` | `67108864` | Inbound `/v1/messages` body cap in bytes (0 disables); over it → `413`. |
 | `UC_FORCE_EFFORT` | `xhigh` | Effort to force (empty = leave untouched). |
 | `UC_FORCE_THINKING` | `1` | Force adaptive thinking. |
 | `UC_INJECT_REMINDER` | `1` | Inject the Ultracode reminder. |
@@ -391,7 +404,7 @@ disconnect aborts the upstream call).
 | `src/server.ts` | HTTP handler: health, `/v1/models`, `/v1/messages` routing |
 | `src/config/config.ts` | JSONC loader + `normalizeModels` (entries → routing slots + discovery models, one each) |
 | `src/config/{types,validate}.ts` | shared types / config validation |
-| `src/core/{env,ids,log,which,runtime}.ts` | env + `${VAR}` / ids / logger / `which` / context types |
+| `src/core/{env,ids,log,which,runtime,metrics}.ts` | env + `${VAR}` / ids / redacting logger / `which` / context types / metrics |
 | `src/net/{http,httpUtil,sse,emit}.ts` | HTTP client / header helpers / OpenAI→event / Anthropic SSE+JSON |
 | `src/pipeline/envelope.ts` | the UltraCode envelope + `[1m]` enforcement |
 | `src/pipeline/model1m.ts` | `[1m]` parsing + the `context-1m-2025-08-07` beta |

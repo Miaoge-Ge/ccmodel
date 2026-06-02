@@ -11,6 +11,7 @@ import { resolveProvider, registeredTypes } from "./providers/registry.js";
 import { codexAuthAvailable } from "./providers/codexClient.js";
 import { randomHex } from "./core/ids.js";
 import { log, vlog } from "./core/log.js";
+import { recordRequest, recordWant1m, requestKind, snapshot, prometheus } from "./core/metrics.js";
 
 export type { ProxyContext } from "./core/runtime.js";
 
@@ -18,6 +19,11 @@ type Json = Record<string, unknown>;
 
 export function createServer(ctx: ProxyContext): Server {
   return createHttpServer((req, res) => {
+    const startedAt = Date.now();
+    const path = (req.url || "").split("?")[0] || "";
+    // Record once the response is fully sent — captures the real status + latency
+    // for every path (health, models, messages, streaming) without threading state.
+    res.on("finish", () => recordRequest(requestKind(path), res.statusCode || 0, Date.now() - startedAt));
     handle(req, res, ctx).catch((e) => {
       log(`unhandled handler error: ${String(e)}`);
       if (!res.headersSent) sendJson(res, 502, { type: "error", error: { type: "proxy_error", message: String(e) } });
@@ -35,6 +41,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
   res.on("close", () => {
     if (!res.writableFinished) ac.abort();
   });
+
+  // ---- metrics (Prometheus text) ----
+  if (path === "/metrics") {
+    const body = Buffer.from(prometheus(), "utf-8");
+    res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4", "Content-Length": String(body.length) });
+    res.end(body);
+    return;
+  }
 
   // ---- health ----
   if (path === "/healthz" || path === "/health") {
@@ -56,6 +70,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
           { type: v.type || "anthropic", model: v.model, upstream: v.upstream || "(default)" },
         ]),
       ),
+      metrics: snapshot(),
     });
     return;
   }
@@ -122,6 +137,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
 
   const provider = resolveProvider(route.type);
   if (isMessagesPost) {
+    if (route.want1m) recordWant1m();
     vlog(
       `[${id}] ${method} ${path} model=${modelId || "?"} provider=${provider.type} stream=${wantStream} want1m=${Boolean(route.want1m)}`,
     );

@@ -14,11 +14,20 @@ before(async () => {
 });
 after(() => h?.close());
 
-test("healthz reports ok + codex helper + slots", async () => {
+test("healthz reports ok + codex helper + slots + metrics", async () => {
   const j = (await (await h.get("/healthz")).json()) as any;
   assert.equal(j.ok, true);
   assert.equal(j.codex_helper, true);
   assert.ok(j.slots["claude-minimax-m3"], "a configured slot is reported");
+  assert.ok(j.metrics && typeof j.metrics.requests_total === "number", "metrics snapshot embedded");
+});
+
+test("/metrics exposes Prometheus text that counts traffic", async () => {
+  await h.post({ model: "claude-opus-4-8[1m]", max_tokens: 50, messages: [{ role: "user", content: "hi" }] });
+  const text = await (await h.get("/metrics")).text();
+  assert.ok(text.includes("# TYPE ccmodel_requests_total counter"));
+  assert.ok(/ccmodel_requests_by_kind_total\{kind="messages"\} [1-9]/.test(text), "a messages request was counted");
+  assert.ok(/ccmodel_want_1m_total [1-9]/.test(text), "the [1m] request was counted as 1M");
 });
 
 test("/v1/models merges upstream + custom; [1m] is suffix-driven", async () => {

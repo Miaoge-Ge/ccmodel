@@ -196,7 +196,8 @@ Claude Code -> ccmodel server -> envelope/[1m] transform -> Provider -> backend
 
 主要行为：
 
-- `/healthz` 返回版本、provider、模型、1M 策略和 Codex 登录状态。
+- `/healthz` 返回版本、provider、模型、1M 策略、Codex 登录状态，以及一份 `metrics` 快照。
+- `GET /metrics` 以 Prometheus 文本格式暴露同样的计数（按类型/状态码的请求数、错误数、1M 计数、平均/最大延迟、运行时长）。
 - `GET /v1/models` 合并上游模型与本地配置模型。
 - `POST /v1/messages` 会先注入 UltraCode 信封，再按模型路由到 provider。
 - OpenAI 兼容后端会做 Anthropic <-> OpenAI 消息和工具调用转换。
@@ -223,6 +224,7 @@ Claude Code -> ccmodel server -> envelope/[1m] transform -> Provider -> backend
 | `UC_LISTEN_PORT` | `8141` | 监听端口 |
 | `UC_UPSTREAM` | `https://api.anthropic.com` | 默认 Anthropic 上游 |
 | `UC_MAX_TOKENS` | `64000` | `max_tokens` 下限 |
+| `UC_MAX_BODY_BYTES` | `67108864` | 入站 `/v1/messages` 请求体上限（字节，0 关闭）；超限返回 `413` |
 | `UC_FORCE_EFFORT` | `xhigh` | 强制 effort；空字符串表示关闭 |
 | `UC_FORCE_THINKING` | `1` | 是否强制 adaptive thinking |
 | `UC_INJECT_REMINDER` | `1` | 是否注入 UltraCode 系统提醒 |
