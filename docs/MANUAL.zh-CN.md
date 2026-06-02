@@ -65,6 +65,19 @@ npm run launch
 
 启动后，在 Claude Code 中输入 `/model` 选择模型。`model` id 结尾带 `[1m]` 的那一项以 100 万上下文运行。
 
+### 在任意目录下使用
+
+`npm run launch` 必须在本仓库执行。想在别的项目里用而不必如此，把 `ccmodel` 命令装到 `PATH` 上一次：
+
+```bash
+npm link        # 在本仓库执行 —— 把 `ccmodel` 软链到全局（npm rm -g ccmodel 解除）
+```
+
+之后 `cd` 进任意项目执行 `ccmodel`：它会启动代理、在**当前目录**打开 Claude Code，并使用本仓库的
+`config.jsonc`（经软链解析，配置和代码改动即时生效）。`ccmodel --version` 打印版本和所链接的仓库路径，
+`ccmodel --help` 列出选项，其余参数透传给 `claude`。`npm i -g .` 也能装，但 `npm link` 让命令始终指向
+你的工作副本。
+
 ## 4. 配置模型
 
 配置文件是 `config.jsonc`，从 `config.example.jsonc` 复制。它支持 `//`、`/* */` 注释和尾逗号，且 `config.jsonc` 已被 `.gitignore` 排除。

@@ -66,6 +66,27 @@ at a 1,000,000-token context window.
 - `npm run icons` installs cross-platform desktop launchers.
 - `npm run uninstall` stops the proxy and removes the launchers and session state.
 
+### Use it from any directory
+
+To launch ccmodel on other projects without `cd`-ing back here, install it on your
+`PATH` once:
+
+```bash
+npm link        # from this repo — symlinks the `ccmodel` command globally
+```
+
+Then, from any project folder:
+
+```bash
+cd ~/some/other/project
+ccmodel          # starts the proxy and opens Claude Code here, using this repo's config.jsonc
+```
+
+`ccmodel --version` shows the version and the linked repo; `ccmodel --help` lists
+the options; any other arguments pass through to `claude`. Remove the global link
+with `npm rm -g ccmodel`. (`npm i -g .` also works, but `npm link` keeps the global
+command pointed at this repo, so config and code edits take effect immediately.)
+
 ## Configuration
 
 The entire configuration is a single list of models in `config.jsonc` (JSONC, so

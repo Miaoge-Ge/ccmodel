@@ -87,6 +87,22 @@ In Claude Code, type `/model` and pick a backend. Picks ending in `[1m]` run at 
 Claude Code, discovery on) and **Claude Code (Normal)** (your usual install,
 untouched).
 
+### Use it from any directory
+
+`npm run launch` must be run from the repo. To use ccmodel on other projects
+without that, put the `ccmodel` command on your `PATH` once:
+
+```bash
+npm link        # from the repo — symlinks `ccmodel` globally (npm rm -g ccmodel to undo)
+```
+
+Then `cd` into any project and run `ccmodel`: it starts the proxy, opens Claude
+Code **in that directory**, and uses this repo's `config.jsonc` (resolved through
+the symlink, so config and code edits take effect immediately). `ccmodel --version`
+prints the version and the linked repo path; `ccmodel --help` lists the options;
+any other arguments pass through to `claude`. `npm i -g .` also installs the
+command, but `npm link` keeps it pointed at your working copy.
+
 ## 4. Configure your models
 
 Everything is in one file: **`config.jsonc`** (copied from

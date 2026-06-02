@@ -57,6 +57,25 @@ npm run launch                           # 首次运行会构建，启动代理�
 - `npm run icons` 安装跨平台桌面启动图标。
 - `npm run uninstall` 停止代理并移除启动图标与会话状态。
 
+### 在任意目录下使用
+
+想在别的项目里用 ccmodel 而不必每次 `cd` 回本仓库，只需把它装到 `PATH` 上一次：
+
+```bash
+npm link        # 在本仓库执行 —— 把 `ccmodel` 命令软链到全局
+```
+
+之后在任意项目目录：
+
+```bash
+cd ~/some/other/project
+ccmodel          # 在当前目录启动代理并打开 Claude Code，用的是本仓库的 config.jsonc
+```
+
+`ccmodel --version` 显示版本和所链接的仓库路径；`ccmodel --help` 列出选项；其余参数会
+透传给 `claude`。用 `npm rm -g ccmodel` 解除全局链接。（`npm i -g .` 也可以，但 `npm link`
+让全局命令始终指向本仓库，配置和代码改动即时生效。）
+
 ## 配置
 
 整个配置就是 `config.jsonc` 里的一个模型列表（JSONC，允许注释与尾逗号；该文件已 gitignore）。

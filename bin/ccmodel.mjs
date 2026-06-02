@@ -111,7 +111,36 @@ async function readProxyConfig(cfgPath) {
   return { port, upstream };
 }
 
+function readVersion() {
+  try {
+    return JSON.parse(readFileSync(join(repo, "package.json"), "utf8")).version || "dev";
+  } catch {
+    return "dev";
+  }
+}
+
 async function main() {
+  // 0. --version / --help (work from any directory once installed globally).
+  if (passthroughArgs.includes("--version") || passthroughArgs.includes("-v")) {
+    console.log(`ccmodel ${readVersion()}`);
+    console.log(`repo: ${repo}`);
+    return;
+  }
+  if (passthroughArgs.includes("--help") || passthroughArgs.includes("-h")) {
+    console.log(`ccmodel ${readVersion()} — launch Claude Code with the ccmodel proxy, from any directory.
+
+Usage:
+  ccmodel                 launch Claude Code (in the current directory) with the proxy
+  ccmodel --proxy-only    start just the proxy (detached) and leave it running
+  ccmodel --version       print the version and the repo it's linked to
+  ccmodel --help          show this help
+
+Any other arguments are passed through to \`claude\`. Configuration lives in the
+repo's config.jsonc (${repo}). Install globally with \`npm link\` (or \`npm i -g .\`)
+from the repo so \`ccmodel\` is on your PATH.`);
+    return;
+  }
+
   // 1. Claude Code CLI
   const claude = which("claude");
   if (!claude && !proxyOnly) {

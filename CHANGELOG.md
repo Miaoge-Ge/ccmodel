@@ -6,6 +6,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.3] — 2026-06-02
+
+### Added
+
+- **Run `ccmodel` from any directory.** `npm link` (or `npm i -g .`) puts the
+  `ccmodel` command on your `PATH`; it launches Claude Code in the current
+  directory with the proxy, resolving this repo's `config.jsonc` and `dist`
+  through the link. The launcher gained `--version` (prints the version and the
+  linked repo) and `--help`; any other arguments pass through to `claude`.
+
 ## [1.3.2] — 2026-06-02
 
 ### Fixed
