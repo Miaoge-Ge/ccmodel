@@ -6,6 +6,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.5] — 2026-06-02
+
+### Fixed
+
+- **Metrics: count `count_tokens` and aborted requests.** `count_tokens` requests
+  now have their own metrics kind instead of being lumped into `other`, and a
+  request that the client aborts mid-flight is recorded too (on `close`, not only
+  `finish`) so the totals and latency no longer silently drop disconnects.
+
 ## [1.3.4] — 2026-06-02
 
 ### Changed

@@ -8,6 +8,8 @@ beforeEach(() => resetMetrics());
 test("requestKind classifies paths", () => {
   assert.equal(requestKind("/v1/messages"), "messages");
   assert.equal(requestKind("/anthropic/v1/messages"), "messages");
+  assert.equal(requestKind("/v1/messages/count_tokens"), "count_tokens", "count_tokens is its own kind, not 'other'");
+  assert.equal(requestKind("/anthropic/v1/messages/count_tokens"), "count_tokens");
   assert.equal(requestKind("/v1/models"), "models");
   assert.equal(requestKind("/healthz"), "health");
   assert.equal(requestKind("/metrics"), "health");

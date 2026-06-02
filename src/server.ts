@@ -21,9 +21,17 @@ export function createServer(ctx: ProxyContext): Server {
   return createHttpServer((req, res) => {
     const startedAt = Date.now();
     const path = (req.url || "").split("?")[0] || "";
-    // Record once the response is fully sent — captures the real status + latency
-    // for every path (health, models, messages, streaming) without threading state.
-    res.on("finish", () => recordRequest(requestKind(path), res.statusCode || 0, Date.now() - startedAt));
+    // Record exactly once, on whichever fires first: `finish` (response fully sent)
+    // or `close` (client disconnected mid-request). Recording on `close` too means
+    // aborted requests are still counted in the totals/latency, not silently dropped.
+    let recorded = false;
+    const record = (): void => {
+      if (recorded) return;
+      recorded = true;
+      recordRequest(requestKind(path), res.statusCode || 0, Date.now() - startedAt);
+    };
+    res.on("finish", record);
+    res.on("close", record);
     handle(req, res, ctx).catch((e) => {
       log(`unhandled handler error: ${String(e)}`);
       if (!res.headersSent) sendJson(res, 502, { type: "error", error: { type: "proxy_error", message: String(e) } });

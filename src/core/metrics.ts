@@ -5,7 +5,7 @@
  * Prometheus text format on /metrics.
  */
 
-export type RequestKind = "messages" | "models" | "health" | "other";
+export type RequestKind = "messages" | "count_tokens" | "models" | "health" | "other";
 
 interface Counters {
   startedAt: number;
@@ -23,7 +23,7 @@ function fresh(now: number): Counters {
   return {
     startedAt: now,
     total: 0,
-    byKind: { messages: 0, models: 0, health: 0, other: 0 },
+    byKind: { messages: 0, count_tokens: 0, models: 0, health: 0, other: 0 },
     byStatusClass: {},
     errors: 0,
     want1m: 0,
@@ -37,6 +37,7 @@ let c = fresh(Date.now());
 
 /** Classify a request path so counters stay low-cardinality. */
 export function requestKind(path: string): RequestKind {
+  if (path.endsWith("/v1/messages/count_tokens")) return "count_tokens";
   if (path.endsWith("/v1/messages")) return "messages";
   if (path.endsWith("/v1/models")) return "models";
   if (path === "/healthz" || path === "/health" || path === "/metrics") return "health";
