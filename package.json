@@ -1,9 +1,17 @@
 {
   "name": "ccmodel",
-  "version": "1.2.0",
-  "description": "Run Claude Code's UltraCode mode — and a reliable [1m] 1M-context — on any model you already pay for. A tiny loopback proxy for the /model picker.",
+  "version": "1.3.0",
+  "description": "A zero-dependency loopback proxy that brings Claude Code's UltraCode behavior and a reliable [1m] 1M-token context to any model, selectable from the /model menu.",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/Miaoge-Ge/ccmodel#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Miaoge-Ge/ccmodel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Miaoge-Ge/ccmodel/issues"
+  },
   "engines": {
     "node": ">=20"
   },

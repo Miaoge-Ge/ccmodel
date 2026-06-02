@@ -23,7 +23,7 @@ import type { Config } from "./config/types.js";
 import { log } from "./core/log.js";
 
 /** Bumped on releases; surfaced in /healthz. */
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 
 function resolveContext(): { ctx: ProxyContext; host: string; port: number } {
   const cfgPath = process.env.UC_CONFIG || defaultConfigPath();

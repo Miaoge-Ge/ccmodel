@@ -6,6 +6,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-06-02
+
 ### Changed
 
 - **The UltraCode envelope is now scoped by backend kind.** The Workflow system
@@ -14,6 +16,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to a reasoning effort) but dropped for OpenAI-compatible/cursor. Third-party
   models are no longer shipped a Claude-specific reminder they can't act on — no
   wasted tokens, no irrelevant instruction. The `max_tokens` floor is unchanged.
+- **Node baseline is now 20+** (Node 18 is EOL). CI matrix: 20 / 22 / 24. The test
+  runner enumerates files explicitly (`scripts/test.mjs`) rather than relying on
+  `node --test` glob expansion, which only exists from Node 21.
 
 ### Added
 
@@ -42,15 +47,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   CI runs lint + format-check before build/test.
 - **Tests** — the monolithic `test/proxy.test.ts` is split into per-module suites
   under `test/unit/*` plus an end-to-end `test/integration.test.ts` (shared
-  `test/helpers/harness.ts`), with new coverage for the SSE parser, HTTP client,
-  empty-turn retry, cursor stream parsing and `${ENV}` expansion. **32 → 109
-  cases.**
-
-### Changed
-
-- **Node baseline is now 20+** (Node 18 is EOL). CI matrix: 20 / 22 / 24. The
-  test runner enumerates files explicitly (`scripts/test.mjs`) instead of relying
-  on `node --test` glob expansion, which only exists from Node 21.
+  `test/helpers/harness.ts`), with new coverage for config, the `[1m]`/envelope
+  pipeline, the SSE parser, the HTTP client, empty-turn retry, the Codex/Cursor
+  helpers, the Anthropic emitters, metrics, draining, and a concurrency check.
+  **32 → 139 cases; line coverage ~81% → ~90%.**
 
 ## [1.2.0]
 
