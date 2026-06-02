@@ -6,8 +6,17 @@ import {
   toolsToResponses,
   toolChoiceToResponses,
   parseCodexResponsesStream,
+  decodeJwtClaims,
+  accountId,
+  isExpiring,
 } from "../../src/providers/codexClient.js";
 import type { InternalEvent, OpenAIMessage } from "../../src/config/types.js";
+
+/** Build an unsigned JWT (header.payload.sig) with the given claims, base64url. */
+function jwt(claims: Record<string, unknown>): string {
+  const b64u = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${b64u({ alg: "none" })}.${b64u(claims)}.sig`;
+}
 
 async function collect(gen: AsyncGenerator<InternalEvent>): Promise<InternalEvent[]> {
   const out: InternalEvent[] = [];
@@ -19,6 +28,20 @@ async function collect(gen: AsyncGenerator<InternalEvent>): Promise<InternalEven
 async function* chunks(...lines: string[]): AsyncGenerator<Buffer> {
   for (const l of lines) yield Buffer.from(l, "utf-8");
 }
+
+test("decodeJwtClaims / accountId / isExpiring read the token payload", () => {
+  const future = Math.floor(Date.now() / 1000) + 3600;
+  const token = jwt({ exp: future, "https://api.openai.com/auth": { chatgpt_account_id: "acc_42" } });
+  assert.equal((decodeJwtClaims(token) as any).exp, future);
+  assert.equal(accountId(token), "acc_42");
+  assert.equal(isExpiring(token), false, "an hour out is not expiring");
+
+  const stale = jwt({ exp: Math.floor(Date.now() / 1000) - 10 });
+  assert.equal(isExpiring(stale), true);
+  assert.equal(accountId(jwt({})), undefined, "no account claim → undefined");
+  assert.deepEqual(decodeJwtClaims("garbage"), {}, "malformed token → empty claims");
+  assert.equal(isExpiring(jwt({})), false, "no exp claim → treated as not expiring");
+});
 
 test("messagesToResponsesInput maps roles to Responses items + instructions", () => {
   const msgs: OpenAIMessage[] = [

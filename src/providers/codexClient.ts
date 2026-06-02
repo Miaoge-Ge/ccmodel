@@ -62,7 +62,7 @@ function loadAuth(): Json {
   }
 }
 
-function decodeJwtClaims(token: string): Json {
+export function decodeJwtClaims(token: string): Json {
   try {
     const payload = token.split(".")[1] ?? "";
     const padded = payload + "=".repeat(((-payload.length % 4) + 4) % 4);
@@ -74,14 +74,14 @@ function decodeJwtClaims(token: string): Json {
   }
 }
 
-function accountId(token: string): string | undefined {
+export function accountId(token: string): string | undefined {
   const claims = decodeJwtClaims(token);
   const auth = isRecord(claims["https://api.openai.com/auth"]) ? (claims["https://api.openai.com/auth"] as Json) : {};
   const id = auth.chatgpt_account_id;
   return typeof id === "string" ? id : undefined;
 }
 
-function isExpiring(token: string, skew = 120): boolean {
+export function isExpiring(token: string, skew = 120): boolean {
   const claims = decodeJwtClaims(token);
   const exp = claims.exp;
   if (typeof exp !== "number") return false;
