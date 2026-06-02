@@ -43,7 +43,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **Node baseline is now 20+** (Node 18 is EOL). CI matrix: 20 / 22 / 24.
+- **Node baseline is now 20+** (Node 18 is EOL). CI matrix: 20 / 22 / 24. The
+  test runner enumerates files explicitly (`scripts/test.mjs`) instead of relying
+  on `node --test` glob expansion, which only exists from Node 21.
 
 ## [1.2.0]
 
@@ -69,7 +71,3 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Baseline: UltraCode envelope on any model, a reliable `[1m]` 1M-context
   guarantee, `/model` discovery, and the anthropic / openai_compat / codex /
   cursor providers.
-
-[Unreleased]: https://github.com/
-[1.2.0]: https://github.com/
-[1.1.0]: https://github.com/

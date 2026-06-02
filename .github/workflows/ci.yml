@@ -25,6 +25,6 @@ jobs:
       - name: Type-check + build
         run: npm run build
       - name: Offline self-test
-        run: node --test "dist/test/**/*.test.js"
+        run: node scripts/test.mjs
       - name: Doctor (config validation, skip nested test)
         run: node dist/scripts/doctor.js --no-test --ci
