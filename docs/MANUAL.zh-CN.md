@@ -225,6 +225,7 @@ Claude Code -> ccmodel server -> envelope/[1m] transform -> Provider -> backend
 | `UC_UPSTREAM` | `https://api.anthropic.com` | 默认 Anthropic 上游 |
 | `UC_MAX_TOKENS` | `64000` | `max_tokens` 下限 |
 | `UC_MAX_BODY_BYTES` | `67108864` | 入站 `/v1/messages` 请求体上限（字节，0 关闭）；超限返回 `413` |
+| `UC_SHUTDOWN_GRACE_MS` | `10000` | 收到 SIGINT/SIGTERM 后，强制关闭连接前用于排空在途请求的宽限期（毫秒） |
 | `UC_FORCE_EFFORT` | `xhigh` | 强制 effort；空字符串表示关闭 |
 | `UC_FORCE_THINKING` | `1` | 是否强制 adaptive thinking |
 | `UC_INJECT_REMINDER` | `1` | 是否注入 UltraCode 系统提醒 |

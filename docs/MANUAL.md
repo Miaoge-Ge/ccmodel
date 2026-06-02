@@ -370,6 +370,7 @@ to the `cursor-agent` CLI.
 | `UC_CONFIG` | auto | Path to the config file. |
 | `UC_MAX_TOKENS` | `64000` | `max_tokens` floor (overrides config `max_tokens`). |
 | `UC_MAX_BODY_BYTES` | `67108864` | Inbound `/v1/messages` body cap in bytes (0 disables); over it → `413`. |
+| `UC_SHUTDOWN_GRACE_MS` | `10000` | Grace window to drain in-flight requests on SIGINT/SIGTERM before forcing sockets closed. |
 | `UC_FORCE_EFFORT` | `xhigh` | Effort to force (empty = leave untouched). |
 | `UC_FORCE_THINKING` | `1` | Force adaptive thinking. |
 | `UC_INJECT_REMINDER` | `1` | Inject the Ultracode reminder. |

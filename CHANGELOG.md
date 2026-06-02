@@ -17,6 +17,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Graceful shutdown / connection draining** — on SIGINT/SIGTERM the proxy now
+  stops accepting connections, frees idle keep-alive sockets, lets in-flight
+  requests (including streaming turns) finish, and only force-closes stragglers
+  after a grace window (`UC_SHUTDOWN_GRACE_MS`, default 10 s) — instead of a blunt
+  1.5 s force-exit.
 - **Observability** — in-process metrics (requests by kind/status, errors, 1M
   count, latency avg/max, uptime) exposed as a `metrics` snapshot on `/healthz`
   and in Prometheus text format on a new `GET /metrics` endpoint.

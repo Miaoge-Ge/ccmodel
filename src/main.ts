@@ -17,6 +17,7 @@ import { ENV } from "./core/env.js";
 import { loadConfig, defaultConfigPath, normalizeModels } from "./config/config.js";
 import { validateConfig } from "./config/validate.js";
 import { createServer, type ProxyContext } from "./server.js";
+import { drainServer } from "./core/shutdown.js";
 import type { EnvelopeSettings } from "./pipeline/envelope.js";
 import type { Config } from "./config/types.js";
 import { log } from "./core/log.js";
@@ -172,14 +173,15 @@ function main(): void {
     );
   });
 
-  const shutdown = (): void => {
-    log("shutting down");
-    server.close(() => process.exit(0));
-    // Force-exit if connections linger.
-    setTimeout(() => process.exit(0), 1500).unref();
+  let shuttingDown = false;
+  const shutdown = (signal: string): void => {
+    if (shuttingDown) return; // a second Ctrl-C shouldn't reset the grace timer
+    shuttingDown = true;
+    log(`${signal} — draining (finishing in-flight requests, grace ${ENV.SHUTDOWN_GRACE_MS}ms)`);
+    drainServer(server, { graceMs: ENV.SHUTDOWN_GRACE_MS, log, onClosed: () => process.exit(0) });
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
 main();
