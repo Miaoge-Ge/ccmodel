@@ -313,9 +313,22 @@ every backend supports 1M.
 | `system` | + an *"Ultracode is on…"* reminder | steers toward the Workflow/quality harness |
 
 Each field is toggleable globally (`UC_FORCE_EFFORT`, `UC_FORCE_THINKING`,
-`UC_MAX_TOKENS`, `UC_INJECT_REMINDER`) or per-model (`"effort": false`). For
-OpenAI-compatible backends these Anthropic-only fields are simply dropped during
-translation; for codex, the effort is mapped onto the Codex reasoning effort.
+`UC_MAX_TOKENS`, `UC_INJECT_REMINDER`) or per-model (`"effort": false`).
+
+**The envelope is scoped by backend kind** so a backend never receives fields it
+can't use:
+
+| Backend | effort | thinking | Workflow reminder | max_tokens floor |
+|---------|:------:|:--------:|:-----------------:|:----------------:|
+| Anthropic passthrough (real Claude, `…/anthropic`) | ✅ | ✅ | ✅ | ✅ |
+| Codex (GPT-5.5) | ✅ (→ reasoning effort) | — | — | ✅ |
+| OpenAI-compatible / cursor | — | — | — | ✅¹ |
+
+¹ The OpenAI provider re-caps `max_tokens` to its own default/slot value, so the
+floor is effectively a no-op there. The point: OpenAI-compatible and cursor
+backends are **not** sent the Claude-only `output_config`/`thinking` fields or the
+Workflow reminder — that would just add tokens and reference tooling the model
+can't use.
 
 ### Gateway discovery (why your models appear in `/model`)
 

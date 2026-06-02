@@ -30,8 +30,11 @@ Two things, on top of stock Claude Code:
 
 1. **UltraCode on any model.** At the API boundary, "UltraCode" is just
    `effort=xhigh` + adaptive thinking + a big `max_tokens` + one system reminder
-   — there's no secret model. ccmodel puts that envelope on every request and
-   forwards it to whatever backend you pick.
+   — there's no secret model. ccmodel applies the envelope **per backend kind**,
+   not blindly: Anthropic-family backends (real Claude, `…/anthropic`) get the
+   full envelope; Codex keeps the effort (mapped to its reasoning effort); and
+   OpenAI-compatible/cursor backends are *not* shipped Claude-only fields or the
+   Workflow reminder they can't use (no wasted tokens, no irrelevant instruction).
 2. **A 1M context that doesn't lie.** Claude Code's `[1m]` suffix is supposed to
    give you 1M tokens, but the beta header that actually unlocks it gets dropped
    in several code paths, so you quietly cap at 200K. ccmodel sits exactly where

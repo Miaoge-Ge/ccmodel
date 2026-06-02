@@ -76,6 +76,7 @@ test("openai_compat streaming tool-call → Anthropic tool_use (+ caps/headers/b
   assert.equal(o.tool_choice, "auto");
   assert.equal(o.max_tokens, 1234, "slot max_output_tokens cap honored");
   assert.equal(o.reasoning_split, true, "route body param merged");
+  assert.ok(!JSON.stringify(o.messages).includes("Ultracode is on:"), "the Workflow reminder is NOT shipped to a third-party model");
   assert.equal(h.state.seenOaiHeaders["x-test-ua"], "ccmodel/test", "custom header forwarded");
   assert.equal(h.state.seenOaiHeaders["authorization"], "Bearer secret123", "${ENV} key wrapped + reached backend");
   assert.ok(out.includes('"type":"tool_use"') && out.includes('"name":"get_weather"'));

@@ -6,7 +6,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The UltraCode envelope is now scoped by backend kind.** The Workflow system
+  reminder and the `thinking` field are injected only for Anthropic-family
+  backends; `output_config.effort` is kept for Anthropic and Codex (which maps it
+  to a reasoning effort) but dropped for OpenAI-compatible/cursor. Third-party
+  models are no longer shipped a Claude-specific reminder they can't act on — no
+  wasted tokens, no irrelevant instruction. The `max_tokens` floor is unchanged.
+
 ### Added
+
+- **Inbound body size cap** (`UC_MAX_BODY_BYTES`, default 64 MiB) — the proxy
+  returns `413 request_too_large` instead of buffering an unbounded upload.
 
 - **Connection pooling** — the upstream HTTP client now uses shared keep-alive
   agents (http + https), reusing sockets instead of a TCP+TLS handshake per

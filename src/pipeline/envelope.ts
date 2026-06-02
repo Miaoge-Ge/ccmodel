@@ -134,10 +134,23 @@ export function transformMessagesBody(
   // ---- UltraCode envelope (with per-route overrides) ----
   // A route may opt out of individual envelope fields (e.g. a strict backend
   // that rejects output_config); anything unset falls back to the global.
+  //
+  // Scope by backend kind so we don't ship inert/irrelevant fields to backends
+  // that can't use them:
+  //   - `thinking` + the Workflow reminder are Claude-specific; only Anthropic
+  //     passthrough consumes them. Injecting them into an OpenAI-compatible /
+  //     cursor request just adds tokens (the reminder) or dead body (thinking).
+  //   - `output_config.effort` is consumed by Anthropic AND by the Codex path
+  //     (mapped to reasoning_effort); OpenAI-compatible/cursor ignore it.
+  // The max_tokens floor is universal (harmless where a provider re-caps it).
+  const routeType = slot?.type ?? "anthropic";
+  const isAnthropicRoute = routeType === "anthropic";
+  const effortApplies = isAnthropicRoute || routeType === "codex_oauth";
+
   const ov = slot?.envelope;
-  const effEffort = ov?.effort === false ? "" : typeof ov?.effort === "string" ? ov.effort : settings.forceEffort;
-  const effThinking = ov?.thinking ?? settings.forceThinking;
-  const effReminder = ov?.reminder ?? settings.injectReminder;
+  const effEffort = !effortApplies ? "" : ov?.effort === false ? "" : typeof ov?.effort === "string" ? ov.effort : settings.forceEffort;
+  const effThinking = isAnthropicRoute ? (ov?.thinking ?? settings.forceThinking) : false;
+  const effReminder = isAnthropicRoute ? (ov?.reminder ?? settings.injectReminder) : false;
   const effMaxFloor = typeof ov?.max_tokens === "number" ? ov.max_tokens : settings.maxTokensFloor;
 
   if (effEffort) {

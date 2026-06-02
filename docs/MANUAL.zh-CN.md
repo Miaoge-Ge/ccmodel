@@ -202,6 +202,18 @@ Claude Code -> ccmodel server -> envelope/[1m] transform -> Provider -> backend
 - OpenAI 兼容后端会做 Anthropic <-> OpenAI 消息和工具调用转换。
 - 空回合会有有限重试；下游断开时会中止上游请求。
 
+**信封按后端类型精准投放**，后端绝不会收到它用不上的字段：
+
+| 后端 | effort | thinking | Workflow 提醒 | max_tokens 下限 |
+|------|:------:|:--------:|:-------------:|:---------------:|
+| Anthropic 直通（真·Claude、`…/anthropic`） | ✅ | ✅ | ✅ | ✅ |
+| Codex（GPT-5.5） | ✅（映射成推理强度） | — | — | ✅ |
+| OpenAI 兼容 / cursor | — | — | — | ✅¹ |
+
+¹ OpenAI provider 会用自己的默认值/slot 上限重新封顶 `max_tokens`，所以下限在那里实际是
+空操作。重点是：OpenAI 兼容和 cursor 后端**不会**收到 Claude 专属的 `output_config`/
+`thinking` 字段或 Workflow 提醒——那只会徒增 token、并引用模型用不上的工具。
+
 ## 8. 环境变量
 
 | 变量 | 默认 | 说明 |

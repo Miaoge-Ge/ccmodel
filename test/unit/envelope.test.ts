@@ -80,6 +80,43 @@ test("transformMessagesBody passes a malformed body through untouched", () => {
   assert.deepEqual(route, {});
 });
 
+test("openai-compatible backends get NO effort/thinking/reminder (inert/noise there)", () => {
+  const { slotMap } = normalizeModels([{ model: "m", url: "https://x/v1", key: "k" }]);
+  const out = JSON.parse(transformMessagesBody(msg("claude-m"), {}, slotMap, {}, SETTINGS).body.toString());
+  assert.equal(out.output_config, undefined, "no effort for an openai backend (translation drops it anyway)");
+  assert.equal(out.thinking, undefined, "no thinking for an openai backend");
+  const sys = out.system;
+  const hasReminder =
+    typeof sys === "string"
+      ? sys.includes("Ultracode is on:")
+      : Array.isArray(sys) && sys.some((b: any) => (b.text || "").includes("Ultracode is on:"));
+  assert.ok(!hasReminder, "no Workflow reminder shipped to a third-party model");
+  assert.ok(out.max_tokens >= 64000, "the max_tokens floor still applies");
+});
+
+test("codex backends KEEP effort (mapped to reasoning_effort) but get no reminder", () => {
+  const { slotMap } = normalizeModels([{ model: "gpt-5.5", api: "codex" }]);
+  const out = JSON.parse(transformMessagesBody(msg("claude-gpt-5-5"), {}, slotMap, {}, SETTINGS).body.toString());
+  assert.equal(out.output_config.effort, "xhigh", "codex consumes output_config.effort → keep it");
+  assert.equal(out.thinking, undefined, "codex ignores thinking → omit it");
+  const sys = out.system;
+  const hasReminder =
+    typeof sys === "string"
+      ? sys.includes("Ultracode is on:")
+      : Array.isArray(sys) && sys.some((b: any) => (b.text || "").includes("Ultracode is on:"));
+  assert.ok(!hasReminder, "no Workflow reminder for codex either");
+});
+
+test("anthropic passthrough still gets the full envelope (effort + thinking + reminder)", () => {
+  const { slotMap } = normalizeModels([{ model: "deepseek-v4-pro", url: "https://api.deepseek.com/anthropic", key: "k" }]);
+  const out = JSON.parse(transformMessagesBody(msg("claude-deepseek-v4-pro"), {}, slotMap, {}, SETTINGS).body.toString());
+  assert.equal(out.output_config.effort, "xhigh");
+  assert.equal(out.thinking.type, "adaptive");
+  const sys = out.system;
+  const hasReminder = Array.isArray(sys) && sys.some((b: any) => (b.text || "").includes("Ultracode is on:"));
+  assert.ok(hasReminder, "anthropic-compatible route keeps the reminder");
+});
+
 test("openai_compat slot carries its body/headers/cap onto the route", () => {
   const { slotMap } = normalizeModels([
     { model: "m", url: "https://x/v1", key: "k", max_output_tokens: 1234, headers: { "X-H": "v" }, body: { reasoning_split: true } },

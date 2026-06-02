@@ -28,7 +28,10 @@ ccmodel 是一个轻量、几乎零依赖的 **TypeScript/Node** 代理 —— �
 
 1. **让任意模型用上 UltraCode。** 在 API 层面，“UltraCode” 不过是
    `effort=xhigh` + 自适应 thinking + 较大的 `max_tokens` + 一条系统提醒 —— 没有什么
-   秘密模型。ccmodel 把这个“信封”加到每个请求上，再转发给你选的任意后端。
+   秘密模型。ccmodel **按后端类型**有针对性地注入，而非盲目套用：Anthropic 系后端
+   （真·Claude、`…/anthropic`）拿到完整信封；Codex 保留 effort（映射成它的推理强度）；
+   而 OpenAI 兼容 / cursor 后端**不会**收到它们用不上的 Claude 专属字段或 Workflow 提醒
+   —— 不浪费 token、不发无关指令。
 2. **一个不会撒谎的 100 万上下文。** Claude Code 的 `[1m]` 后缀本应给你 100 万 token，
    但真正解锁它的 beta 头部会在好几条代码路径里被丢掉，于是你被悄悄限制在 20 万。
    ccmodel 正好处在能在每个请求上把这个头部补回去的位置 —— 所以 `[1m]` 就是 1M。
