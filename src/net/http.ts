@@ -15,6 +15,16 @@ import httpsMod from "node:https";
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import { URL } from "node:url";
 
+/**
+ * Pooled keep-alive agents. A proxy makes many upstream calls to the same few
+ * hosts; reusing sockets avoids a TCP+TLS handshake on every request (a real
+ * latency win on streaming workloads). `maxSockets` is generous so concurrent
+ * subagent traffic doesn't queue behind the pool.
+ */
+const AGENT_OPTS = { keepAlive: true, keepAliveMsecs: 30_000, maxSockets: 256, scheduling: "fifo" as const };
+const httpAgent = new httpMod.Agent(AGENT_OPTS);
+const httpsAgent = new httpsMod.Agent(AGENT_OPTS);
+
 export interface UpstreamResponse {
   status: number;
   headers: IncomingHttpHeaders;
@@ -75,6 +85,7 @@ function once(opts: RequestOptions): Promise<UpstreamResponse> {
         path: u.pathname + u.search,
         method: opts.method || "GET",
         headers: cleanHeaders(opts.headers),
+        agent: isHttps ? httpsAgent : httpAgent,
       },
       (res: IncomingMessage) => {
         resolve({

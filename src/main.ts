@@ -100,8 +100,29 @@ function seedCache(cacheFile: string, baseUrl: string): void {
   );
 }
 
+const USAGE = `ccmodel ${VERSION} — UltraCode + a reliable [1m] 1M-context proxy for Claude Code.
+
+Usage:
+  ccmodel-proxy                      start the proxy
+  ccmodel-proxy --models             print the advertised model list as JSON
+  ccmodel-proxy --seed-cache <f> <u> seed Claude Code's gateway-models cache
+  ccmodel-proxy --version            print the version
+  ccmodel-proxy --help               show this help
+
+Most users run the launcher (\`npm run launch\` / bin/ccmodel.mjs) instead, which
+starts this proxy and points Claude Code at it. Config: config.jsonc (see
+config.example.jsonc). Env knobs are documented in docs/MANUAL.md.`;
+
 function main(): void {
   const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(USAGE + "\n");
+    return;
+  }
+  if (argv.includes("--version") || argv.includes("-v")) {
+    process.stdout.write(VERSION + "\n");
+    return;
+  }
   if (argv.includes("--models") || argv.includes("--print-models")) {
     printModels();
     return;
@@ -131,6 +152,16 @@ function main(): void {
   }
 
   const server = createServer(ctx);
+  server.on("error", (e: NodeJS.ErrnoException) => {
+    if (e.code === "EADDRINUSE") {
+      log(`port ${port} is already in use — another ccmodel may be running, or set a different "port" in config.jsonc / UC_LISTEN_PORT`);
+    } else if (e.code === "EACCES") {
+      log(`permission denied binding ${host}:${port} — pick a port >= 1024 or adjust privileges`);
+    } else {
+      log(`server error: ${String(e)}`);
+    }
+    process.exit(1);
+  });
   server.listen(port, host, () => {
     log(`ccmodel listening on http://${host}:${port} -> ${ctx.upstream}`);
     log(
