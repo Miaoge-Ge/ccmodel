@@ -35,7 +35,7 @@ export function findCursorAgent(): string | null {
   return existsSync(fallback) ? fallback : null;
 }
 
-function flattenMessages(messages: OpenAIMessage[]): { system: string; transcript: string } {
+export function flattenMessages(messages: OpenAIMessage[]): { system: string; transcript: string } {
   const systemParts: string[] = [];
   const lines: string[] = [];
   for (const m of messages || []) {
@@ -58,7 +58,7 @@ function flattenMessages(messages: OpenAIMessage[]): { system: string; transcrip
   return { system: systemParts.join("\n"), transcript: lines.join("\n\n") };
 }
 
-function toolMarkerInstructions(tools: unknown): string {
+export function toolMarkerInstructions(tools: unknown): string {
   const names: string[] = [];
   for (const t of Array.isArray(tools) ? tools : []) {
     const fn = isRecord(t) && isRecord(t.function) ? (t.function as Json) : {};

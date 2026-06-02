@@ -132,7 +132,7 @@ function headers(token: string): Record<string, string> {
   return h;
 }
 
-function messagesToResponsesInput(messages: OpenAIMessage[]): { instructions: string; items: Json[] } {
+export function messagesToResponsesInput(messages: OpenAIMessage[]): { instructions: string; items: Json[] } {
   const instructions: string[] = [];
   const items: Json[] = [];
   for (const m of messages || []) {
@@ -174,7 +174,7 @@ function messagesToResponsesInput(messages: OpenAIMessage[]): { instructions: st
   return { instructions: instructions.join("\n\n"), items };
 }
 
-function toolsToResponses(tools: unknown): Json[] {
+export function toolsToResponses(tools: unknown): Json[] {
   const out: Json[] = [];
   for (const t of Array.isArray(tools) ? tools : []) {
     if (!isRecord(t)) continue;
@@ -192,7 +192,7 @@ function toolsToResponses(tools: unknown): Json[] {
   return out;
 }
 
-function toolChoiceToResponses(tc: unknown): unknown {
+export function toolChoiceToResponses(tc: unknown): unknown {
   if (tc === "auto" || tc === "required" || tc === "none") return tc;
   if (isRecord(tc) && tc.type === "function") {
     const name = isRecord(tc.function) ? (tc.function as Json).name : undefined;
@@ -270,6 +270,17 @@ export async function* streamEvents(params: CodexParams): AsyncGenerator<Interna
     return;
   }
 
+  yield* parseCodexResponsesStream(resp.chunks());
+}
+
+/**
+ * Parse a Codex Responses-API SSE byte stream into the proxy's internal events.
+ * Extracted from streamEvents so it can be unit-tested without auth or network.
+ * Handles text deltas, function-call assembly (added/args-delta/done, with the
+ * call_id/item_id aliasing the API uses), usage, and error frames; flushes any
+ * tool call that never got a terminal `done`.
+ */
+export async function* parseCodexResponsesStream(chunks: AsyncIterable<Buffer>): AsyncGenerator<InternalEvent> {
   const pending = new Map<string, { name: string; args: string }>();
   const alias = new Map<string, string>();
   let buf = Buffer.alloc(0);
@@ -278,7 +289,7 @@ export async function* streamEvents(params: CodexParams): AsyncGenerator<Interna
   const NL = 0x0a;
 
   try {
-    outer: for await (const chunk of resp.chunks()) {
+    outer: for await (const chunk of chunks) {
       buf = Buffer.concat([buf, chunk]);
       let nl: number;
       while ((nl = buf.indexOf(NL)) !== -1) {
@@ -286,10 +297,7 @@ export async function* streamEvents(params: CodexParams): AsyncGenerator<Interna
         buf = buf.subarray(nl + 1);
         if (!line || !line.startsWith("data:")) continue;
         const data = line.slice(5).trim();
-        if (data === "[DONE]") {
-          buf = Buffer.alloc(0);
-          break outer;
-        }
+        if (data === "[DONE]") break outer;
         let obj: Json;
         try {
           const p = JSON.parse(data);
