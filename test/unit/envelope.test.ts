@@ -74,6 +74,20 @@ test("modelMap rewrites a bare id when no slot matches", () => {
   assert.equal(out.model, "backend-y");
 });
 
+test("skipEnvelope mode resolves routing (strips [1m], rewrites model) but adds no envelope", () => {
+  const { slotMap } = normalizeModels([{ model: "backend[1m]", api: "anthropic", url: "https://up" }]);
+  const { body, route } = transformMessagesBody(msg("claude-backend[1m]"), {}, slotMap, {}, SETTINGS, true);
+  const out = JSON.parse(body.toString());
+  assert.equal(out.model, "backend", "model rewritten to the backend id, [1m] stripped");
+  assert.equal(out.output_config, undefined, "no effort injected");
+  assert.equal(out.thinking, undefined, "no thinking injected");
+  assert.equal(out.max_tokens, 10, "max_tokens floor NOT applied in routing-only mode");
+  const sys = out.system;
+  assert.ok(!(Array.isArray(sys) && sys.some((b: any) => (b.text || "").includes("Ultracode is on:"))), "no reminder injected");
+  assert.equal(route.want1m, true, "still flags want1m so the beta header is guaranteed");
+  assert.equal(route.upstream, "https://up");
+});
+
 test("transformMessagesBody passes a malformed body through untouched", () => {
   const { body, route } = transformMessagesBody(Buffer.from("not json"), {}, {}, {}, SETTINGS);
   assert.equal(body.toString(), "not json");

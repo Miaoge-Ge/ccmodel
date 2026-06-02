@@ -131,6 +131,31 @@ test("handles many concurrent requests without corruption", async () => {
   assert.equal(statuses.filter((s) => s === 200).length, N, "every concurrent request returned 200");
 });
 
+test("count_tokens to a third-party backend is answered locally, not forwarded", async () => {
+  h.state.seenCountModel = null;
+  const r = await fetch(`${h.proxyBase}/v1/messages/count_tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-minimax-m3[1m]", messages: [{ role: "user", content: "hello world" }] }),
+  });
+  assert.equal(r.status, 200);
+  const j = (await r.json()) as any;
+  assert.ok(typeof j.input_tokens === "number" && j.input_tokens > 0, "a local estimate is returned");
+  assert.equal(h.state.seenCountModel, null, "the third-party backend (no count_tokens endpoint) was NOT contacted");
+});
+
+test("count_tokens for a passthrough entry forwards with the [1m] suffix stripped", async () => {
+  h.state.seenCountModel = null;
+  const r = await fetch(`${h.proxyBase}/v1/messages/count_tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-opus-4-8[1m]", messages: [{ role: "user", content: "hi" }] }),
+  });
+  assert.equal(r.status, 200);
+  assert.equal(((await r.json()) as any).input_tokens, 99, "the upstream count is returned");
+  assert.equal(h.state.seenCountModel, "claude-opus-4-8", "suffix stripped before the backend sees it");
+});
+
 test("an oversized request body is rejected with 413", async () => {
   const ctx = { ...buildCtx({ models: [] }, "http://127.0.0.1:1"), maxBodyBytes: 50 };
   const server = createServer(ctx);

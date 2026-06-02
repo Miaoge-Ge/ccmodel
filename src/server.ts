@@ -104,8 +104,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
   let wantStream = false;
 
   const isMessagesPost = method === "POST" && path.endsWith("/v1/messages");
-  if (isMessagesPost) {
-    const t = transformMessagesBody(body, req.headers, rt.slotMap, rt.modelMap, rt.settings);
+  const isCountTokens = method === "POST" && path.endsWith("/v1/messages/count_tokens");
+  if (isMessagesPost || isCountTokens) {
+    // count_tokens needs routing (backend id, stripped [1m], upstream, auth) but
+    // NOT the UltraCode envelope — hence skipEnvelope for it.
+    const t = transformMessagesBody(body, req.headers, rt.slotMap, rt.modelMap, rt.settings, isCountTokens);
     body = t.body;
     route = t.route;
     try {
@@ -118,6 +121,18 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
     } catch {
       /* leave parsed null */
     }
+  }
+
+  // count_tokens to a third-party backend: those endpoints don't implement the
+  // Anthropic token-counting API, and forwarding the original (claude-* alias,
+  // [1m]-suffixed) id to api.anthropic.com fails with "model not found" — which
+  // is what makes /context and /compact error out and stall. Answer locally with
+  // a fast estimate instead. Real Claude (no third-party route) still forwards
+  // upstream for an exact count, now with the [1m] suffix correctly stripped.
+  if (isCountTokens && (route.type !== undefined || route.upstream !== undefined)) {
+    vlog(`[${id}] count_tokens (local estimate) model=${modelId || "?"} type=${route.type || "anthropic"}`);
+    sendJson(res, 200, { input_tokens: estimateInputTokens(parsed) });
+    return;
   }
 
   const ctx: RequestContext = {
@@ -144,6 +159,26 @@ async function handle(req: IncomingMessage, res: ServerResponse, rt: ProxyContex
   }
   await provider.handle({ rt, ctx, res });
   if (isMessagesPost) vlog(`[${id}] done in ${Date.now() - ctx.startedAt}ms`);
+}
+
+/**
+ * A fast, dependency-free estimate of an Anthropic request's input tokens, for
+ * count_tokens on backends that don't implement the endpoint. Roughly 4 chars per
+ * token over the system prompt, messages, and tools — accurate enough for the
+ * /context usage display and /compact's size precheck, and it never blocks on a
+ * network round-trip.
+ */
+export function estimateInputTokens(parsed: Json | null): number {
+  if (!parsed) return 0;
+  let chars = 0;
+  const add = (v: unknown): void => {
+    if (typeof v === "string") chars += v.length;
+    else if (v != null) chars += JSON.stringify(v).length;
+  };
+  add(parsed.system);
+  if (Array.isArray(parsed.messages)) for (const m of parsed.messages) add((m as Json)?.content);
+  add(parsed.tools);
+  return Math.max(1, Math.ceil(chars / 4));
 }
 
 async function handleModels(req: IncomingMessage, res: ServerResponse, rt: ProxyContext, signal: AbortSignal): Promise<boolean> {

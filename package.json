@@ -1,6 +1,6 @@
 {
   "name": "ccmodel",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "A zero-dependency loopback proxy that brings Claude Code's UltraCode behavior and a reliable [1m] 1M-token context to any model, selectable from the /model menu.",
   "type": "module",
   "license": "MIT",

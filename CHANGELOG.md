@@ -6,6 +6,23 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-06-02
+
+### Fixed
+
+- **`/context` and `/compact` no longer error or stall on a custom model.** Those
+  commands call `POST /v1/messages/count_tokens`, which the proxy was not routing:
+  the `[1m]` suffix was left on the id and the request went to `api.anthropic.com`
+  as a `claude-*` alias, returning "model not found" (the error surfaced by
+  `/compact`) and making `/context` wait on a failed round-trip. count_tokens is
+  now routed like `/v1/messages` (backend id, stripped `[1m]`, correct upstream
+  and auth) but without the UltraCode envelope. For third-party backends, which do
+  not implement the endpoint, the proxy answers locally with a fast token estimate
+  instead of forwarding a request that would fail.
+- **Flaky shutdown-drain test made deterministic** — it now drains only after the
+  request has reached the handler, instead of racing a fixed sleep, so it no longer
+  intermittently fails on slow CI runners.
+
 ## [1.3.0] — 2026-06-02
 
 ### Changed

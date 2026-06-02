@@ -78,6 +78,13 @@ export function transformMessagesBody(
   slotMap: Record<string, Slot>,
   modelMap: Record<string, string>,
   settings: EnvelopeSettings,
+  /**
+   * Resolve routing only — rewrite the model to the backend id, strip `[1m]`, and
+   * set the route — without applying the UltraCode envelope. Used for auxiliary
+   * endpoints like `/v1/messages/count_tokens`, which must reach the right backend
+   * but must NOT carry effort/thinking/max_tokens/the reminder.
+   */
+  skipEnvelope = false,
 ): TransformResult {
   let body: Json;
   try {
@@ -130,6 +137,12 @@ export function transformMessagesBody(
   }
 
   route.want1m = want1m;
+
+  // Routing-only mode: the model id is already rewritten and the route resolved;
+  // skip every envelope mutation and return.
+  if (skipEnvelope) {
+    return changed ? { body: Buffer.from(JSON.stringify(body), "utf-8"), route } : { body: raw, route };
+  }
 
   // ---- UltraCode envelope (with per-route overrides) ----
   // A route may opt out of individual envelope fields (e.g. a strict backend

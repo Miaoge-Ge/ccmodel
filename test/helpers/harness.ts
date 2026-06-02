@@ -51,6 +51,8 @@ export interface MockState {
   seenAnth: any;
   seenAnthHeaders: Record<string, string>;
   retryHits: number;
+  /** The model id the backend saw on a forwarded count_tokens request (null if none). */
+  seenCountModel: string | null;
 }
 
 function readJson(req: IncomingMessage): Promise<any> {
@@ -121,6 +123,12 @@ export function createMockBackend(state: MockState): Server {
         res.end();
         return;
       }
+      if (path.endsWith("/v1/messages/count_tokens")) {
+        state.seenCountModel = typeof body.model === "string" ? body.model : null;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ input_tokens: 99 }));
+        return;
+      }
       if (path.endsWith("/v1/messages")) {
         state.seenAnth = body;
         state.seenAnthHeaders = lower(req);
@@ -186,7 +194,7 @@ export function integrationConfig(mockBase: string): Config {
 /** Boot a mock backend + a proxy in front of it; returns helpers + a close(). */
 export async function startHarness(cfg?: Config): Promise<Harness> {
   process.env.MOCK_KEY = "secret123";
-  const state: MockState = { seenOai: null, seenOaiHeaders: {}, seenAnth: null, seenAnthHeaders: {}, retryHits: 0 };
+  const state: MockState = { seenOai: null, seenOaiHeaders: {}, seenAnth: null, seenAnthHeaders: {}, retryHits: 0, seenCountModel: null };
   const mockServer = createMockBackend(state);
   const mockPort = await listen(mockServer);
   const mockBase = `http://127.0.0.1:${mockPort}`;
