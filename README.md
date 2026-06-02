@@ -211,6 +211,9 @@ The topic docs have been consolidated into one bilingual manual.
 | Doc | EN | 中文 |
 |-----|----|----|
 | System manual: setup, recipes, 1M, env vars, architecture, troubleshooting | [MANUAL.md](docs/MANUAL.md) | [中文](docs/MANUAL.zh-CN.md) |
+| Contributing guide | [CONTRIBUTING.md](CONTRIBUTING.md) | [中文](CONTRIBUTING.zh-CN.md) |
+| Security policy | [SECURITY.md](SECURITY.md) | [中文](SECURITY.zh-CN.md) |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) | — |
 
 ## License
 

@@ -192,6 +192,9 @@ npm run doctor    # 校验环境与配置，然后运行自测
 | 文档 | 中文 | EN |
 |------|------|----|
 | 系统手册：安装、配置、后端范例、1M、环境变量、架构、排错 | [中文](docs/MANUAL.zh-CN.md) | [EN](docs/MANUAL.md) |
+| 贡献指南 | [中文](CONTRIBUTING.zh-CN.md) | [EN](CONTRIBUTING.md) |
+| 安全策略 | [中文](SECURITY.zh-CN.md) | [EN](SECURITY.md) |
+| 更新日志 | — | [EN](CHANGELOG.md) |
 
 ## 许可
 
