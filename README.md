@@ -42,7 +42,7 @@ env only).
 
 ## What you need
 
-- **Node.js 18+** (`node --version`). The proxy uses only Node built-ins at
+- **Node.js 20+** (`node --version`). The proxy uses only Node built-ins at
   runtime — nothing to install to *run* it; TypeScript is a dev dependency for
   the build.
 - **Claude Code CLI** with UltraCode access (`npm i -g @anthropic-ai/claude-code`).
@@ -194,13 +194,15 @@ npm test          # build + run the offline self-test (node:test, no network/key
 npm run doctor    # validate environment + config, then run the self-test
 ```
 
-The self-test (32 cases, all offline) covers `[1m]`-suffix parsing + 1M discovery
-advertisement, config normalization (id/type/auth inference, dedup, the `[1m]`
-→ `force1m` mapping), the UltraCode envelope, the 1M beta-header guarantee (via
-suffix, per-model force, global flag, and incoming header), per-model effort
-overrides, the provider registry, config validation, the `/v1/models` merge,
-Anthropic⇄OpenAI tool translation, the strict-backend tool-adjacency fix, and
-empty-turn retry.
+The self-test (105 cases, all offline) is split by concern under `test/unit/*`
+(config, `[1m]`/discovery, envelope, translate, SSE parsing, HTTP client + header
+helpers, empty-turn retry, providers/cursor parsing, `${ENV}` expansion) plus an
+end-to-end `test/integration.test.ts` driving a real proxy over an in-process mock
+backend (shared setup in `test/helpers/harness.ts`). It covers `[1m]`-suffix
+parsing, config normalization + validation, the UltraCode envelope, the 1M
+beta-header guarantee (via suffix, per-model force, global flag, and incoming
+header), Anthropic⇄OpenAI tool translation, the strict-backend tool-adjacency
+fix, and empty-turn retry.
 
 ## Docs
 

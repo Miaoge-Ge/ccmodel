@@ -37,7 +37,7 @@ ccmodel 是一个轻量、几乎零依赖的 **TypeScript/Node** 代理 —— �
 
 ## 你需要准备
 
-- **Node.js 18+**（`node --version`）。代理在运行时只用 Node 内置模块 —— **运行**它无需
+- **Node.js 20+**（`node --version`）。代理在运行时只用 Node 内置模块 —— **运行**它无需
   安装任何东西；TypeScript 只是构建用的开发依赖。
 - **Claude Code CLI**，并具备 UltraCode 权限（`npm i -g @anthropic-ai/claude-code`）。
 - **至少一个后端凭证** —— 一个 API key（DeepSeek / MiniMax / OpenRouter / 本地服务……），
@@ -179,10 +179,11 @@ npm test          # 构建并运行离线自测（node:test，无需网络/密�
 npm run doctor    # 校验环境与配置，然后运行自测
 ```
 
-自测（32 个用例，全部离线）覆盖：`[1m]` 后缀解析 + 1M 模型发现广告、配置归一化（id/类型/鉴权
-推断、id 去重、`[1m]` → `force1m` 映射）、UltraCode 信封、1M beta 头部保证（来自后缀、每模型
-强制、全局开关、传入头部四种途径）、每模型 effort 覆盖、Provider 注册表、配置校验、
-`/v1/models` 合并、Anthropic⇄OpenAI 工具转换、严格后端的工具相邻性修复，以及空回合重试。
+自测（105 个用例，全部离线）按关注点拆分在 `test/unit/*`（配置、`[1m]`/发现、信封、翻译、SSE
+解析、HTTP 客户端 + 头部辅助、空回合重试、Provider/cursor 解析、`${ENV}` 展开），外加一个端到端
+`test/integration.test.ts`（真实代理 + 进程内 mock 后端，共享装置在 `test/helpers/harness.ts`）。
+覆盖：`[1m]` 后缀解析、配置归一化与校验、UltraCode 信封、1M beta 头部保证（后缀/每模型强制/全局
+开关/传入头部四种途径）、Anthropic⇄OpenAI 工具转换、严格后端的工具相邻性修复，以及空回合重试。
 
 ## 文档
 

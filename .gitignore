@@ -13,3 +13,6 @@ ccmodel.env
 # Logs / state
 *.log
 .DS_Store
+
+# Live-run scratch (never committed)
+.live/

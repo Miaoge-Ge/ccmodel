@@ -47,7 +47,7 @@ launched process and passes a session-scoped `--settings` file.
 
 | Need | Check | Get it |
 |------|-------|--------|
-| Node.js 18+ | `node --version` | https://nodejs.org (Windows: tick **Add to PATH**) |
+| Node.js 20+ | `node --version` | https://nodejs.org (Windows: tick **Add to PATH**) |
 | Claude Code CLI | `claude --version` | `npm i -g @anthropic-ai/claude-code` |
 | UltraCode access | you've used `/effort ultracode` | part of your Claude plan |
 | ≥1 backend credential | — | an API key and/or `codex login` |
@@ -387,7 +387,9 @@ disconnect aborts the upstream call).
 | `src/pipeline/retry.ts` | empty-turn retry |
 | `src/providers/*` | the Provider interface, registry, and one module per backend |
 | `scripts/doctor.ts` | environment + config validator that runs the self-test |
-| `test/proxy.test.ts` | offline end-to-end self-test (no network/keys) |
+| `test/unit/*.test.ts` | per-module unit tests (config, `[1m]`, envelope, translate, sse, http, retry, providers, env, discovery) |
+| `test/integration.test.ts` | offline end-to-end self-test (no network/keys) |
+| `test/helpers/harness.ts` | shared mock backend + proxy harness for the suites |
 | `bin/ccmodel.mjs` | the cross-platform launcher |
 | `scripts/{install-icons,uninstall}.mjs` | desktop entries + cleanup |
 
@@ -401,7 +403,7 @@ Run the doctor first — it catches most problems and prints the fix:
 | Symptom | Fix |
 |---------|-----|
 | **`[1m]` pick still caps at ~200K** | Confirm `curl -s localhost:8141/v1/models \| grep '\[1m\]'` lists it; with `UC_VERBOSE=1` a `[1m]` request logs `want1m=true` and (on passthrough) the beta is added. If it still caps, the cause is usually **eligibility** (plan doesn't grant 1M) or a **retired-beta** model (Sonnet 4/4.5) — not the header. |
-| **Model missing from `/model`** | Don't set a non-`claude` `id` (the auto id is fine). Use the launcher (it sets the discovery env var) and an OAuth login, not a raw API key. Reopen `/model`. |
+| **Model missing from `/model`** | The auto id is always `claude-…`, so this is usually environment: use the launcher (it sets the discovery env var) with an OAuth login, not a raw API key. Reopen `/model`. |
 | **401 / "invalid api key"** | The entry's `key` (or its `${VAR}`) is wrong/empty. Re-run the doctor. |
 | **404 / "model not found"** | The entry's `model` isn't valid for that backend (it's the backend's id, not the `claude-…` alias), or `url` is wrong. |
 | **Replies in text, never calls tools** | The model is on a passthrough/chat endpoint that drops tools. Give it an OpenAI-compatible `url` (or `"api": "openai"`) so tools are translated both ways. Real Claude handles tools natively. |
@@ -417,19 +419,32 @@ If `npm test` passes, the code is fine and the problem is configuration/credenti
 ## 11. Develop and test
 
 ```bash
-npm run build     # tsc -> dist/
-npm test          # build + run the offline self-test (node:test, no network/keys)
-npm run doctor    # validate environment + config, then run the self-test
+npm run build         # tsc -> dist/
+npm test              # build + run the offline self-test (node:test, no network/keys)
+npm run test:coverage # same, with V8 coverage (node --experimental-test-coverage)
+npm run doctor        # validate environment + config, then run the self-test
+npm run lint          # eslint . (typescript-eslint)
+npm run format:check  # prettier --check .
 ```
 
-The self-test (32 cases) is fully offline (an in-process mock backend) and covers
-`[1m]`-suffix parsing, config normalization (id/type/auth inference, id dedup, the
-`[1m]` → `force1m` mapping), 1M discovery advertisement, the UltraCode envelope,
-the 1M beta-header guarantee (via suffix, per-model force, global flag, and an
-incoming header), per-model `effort`, the no-key auth behavior, config validation,
-the `/v1/models` merge, `REPO_ROOT` resolution, Anthropic⇄OpenAI tool translation,
-the strict-backend tool-adjacency fix, and empty-turn retry. CI runs it on Node
-18/20/22 × Linux/Windows.
+The self-test (105 cases) is fully offline (an in-process mock backend) and is
+split by concern:
+
+| File | Covers |
+|------|--------|
+| `test/unit/config.test.ts` | normalization (id/type/auth inference, dedup, `${ENV}`), JSONC stripping, validation |
+| `test/unit/model1m.test.ts` | `[1m]` parsing, beta-header add/idempotency/detection |
+| `test/unit/envelope.test.ts` | the UltraCode envelope + 1M routing (suffix / force / global / header) |
+| `test/unit/translate.test.ts` | Anthropic⇄OpenAI tools + the strict-backend tool-adjacency fix |
+| `test/unit/discovery.test.ts` | `/v1/models` merge |
+| `test/unit/sse.test.ts` | OpenAI SSE + JSON → internal events |
+| `test/unit/http.test.ts` | the HTTP client (status passthrough, streaming, abort) + header helpers |
+| `test/unit/retry.test.ts` | empty-turn retry + retryable-status policy |
+| `test/unit/providers.test.ts` | the provider registry + cursor stream parsing |
+| `test/unit/env.test.ts` | `${VAR}` expansion |
+| `test/integration.test.ts` | end-to-end proxy over a mock backend (shared `test/helpers/harness.ts`) |
+
+CI runs it on Node 20/22/24 × Linux/Windows, plus lint + format checks.
 
 ## 12. For AI assistants
 

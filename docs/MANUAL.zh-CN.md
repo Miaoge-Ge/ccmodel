@@ -35,7 +35,7 @@ ccmodel 是一个本地回环代理，挂在 Claude Code 的 `ANTHROPIC_BASE_URL
 
 | 项目 | 要求 |
 |------|------|
-| Node.js | 18+ |
+| Node.js | 20+ |
 | Claude Code CLI | `npm i -g @anthropic-ai/claude-code`，并具备你要使用的权限 |
 | 后端凭证 | API key、`codex login`，或本地 OpenAI 兼容服务 |
 | 操作系统 | Windows、macOS、Linux、WSL |
@@ -264,7 +264,11 @@ npm test
 npm run doctor -- --ci
 ```
 
-测试是全离线的（32 个用例，内置 mock backend），不需要真实 API key 或网络。
+测试是全离线的（105 个用例，内置 mock backend），不需要真实 API key 或网络。按关注点拆分在
+`test/unit/*`（配置、`[1m]`、信封、翻译、SSE 解析、HTTP 客户端、重试、Provider、`${ENV}`），
+外加端到端的 `test/integration.test.ts`（共享装置在 `test/helpers/harness.ts`）。
+`npm run test:coverage` 可附带 V8 覆盖率；`npm run lint` / `npm run format:check` 做静态检查。
+CI 在 Node 20/22/24 × Linux/Windows 上运行。
 
 ## 12. 给 AI 助手的执行清单
 

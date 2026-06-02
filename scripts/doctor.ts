@@ -148,8 +148,8 @@ async function main(): Promise<number> {
   const port = envPort !== undefined && envPort !== "" ? Number(envPort) || 8141 : Number(cfg.port) || 8141;
   (await portFree(port)) ? ok(`port ${port} is free`) : note(`port ${port} already in use — a proxy may already be running (fine), or pick another`);
 
-  // 8. offline self-test
-  const testFile = join(REPO_ROOT, "dist", "test", "proxy.test.js");
+  // 8. offline self-test (the end-to-end integration suite exercises the whole proxy)
+  const testFile = join(REPO_ROOT, "dist", "test", "integration.test.js");
   if (!noTest) {
     if (existsSync(testFile)) {
       console.log("\nrunning offline self-test (node --test)...");
