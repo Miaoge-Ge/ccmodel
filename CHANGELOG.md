@@ -12,6 +12,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Windows runners check out LF instead of CRLF. Without it, Prettier's
   `endOfLine: "lf"` check failed on every windows-latest job (the actual CI
   failure; the Ubuntu jobs were already green).
+- **No more CI deprecation warnings** — bumped `actions/checkout` and
+  `actions/setup-node` from v4 to v6 (v4 ran on the now-deprecated Node 20 action
+  runtime).
 
 ## [1.3.1] — 2026-06-02
 
