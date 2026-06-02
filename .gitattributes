@@ -1,0 +1,10 @@
+# Normalize all text files to LF in the repo and on checkout, on every platform.
+# Without this, Windows runners (core.autocrlf=true) check out CRLF and Prettier's
+# `endOfLine: "lf"` check fails — which is exactly what broke CI on windows-latest.
+* text=auto eol=lf
+
+# Explicitly binary (no eol munging) — none currently, but future-proof:
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
