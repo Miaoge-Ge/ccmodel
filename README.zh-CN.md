@@ -53,6 +53,10 @@ npm run launch                           # 首次运行会构建，启动代理�
 
 在 Claude Code 中输入 `/model` 选择后端。以 `[1m]` 结尾的选项会以 100 万 token 窗口运行。
 
+> ccmodel 会话默认以 **`bypassPermissions`** 模式启动（不逐动作弹权限确认）——仅会话级，
+> 你的全局 `~/.claude` 不受影响。想恢复弹窗：`ccmodel --permission-mode default`（或会话中
+> 按 Shift+Tab）。详见 [手册 §9](docs/MANUAL.zh-CN.md#9-权限与安全)。
+
 - `npm run launch -- --proxy-only` 只启动代理并保持常驻。
 - `npm run icons` 安装跨平台桌面启动图标。
 - `npm run uninstall` 停止代理并移除启动图标与会话状态。

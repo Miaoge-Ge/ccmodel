@@ -6,7 +6,23 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [1.3.3] — 2026-06-02
+## [1.3.4] — 2026-06-02
+
+### Changed
+
+- **Launch in `bypassPermissions` by default.** The launcher's session settings
+  now set `permissions.defaultMode = "bypassPermissions"`, so ccmodel sessions run
+  without per-action permission prompts (which constantly interrupt UltraCode's
+  Workflow-heavy autonomous runs). Session-scoped only — your global `~/.claude`
+  is untouched. Override per launch with `ccmodel --permission-mode default`
+  (or `acceptEdits` / `plan`), or Shift+Tab mid-session.
+
+### Docs
+
+- Manual (EN + zh-CN) expanded and reorganized: a new **Permissions and security**
+  section, the `count_tokens` endpoint and behavior, full Codex/Cursor env-var
+  tables, the global-install (`npm link`) workflow, an updated test map, and new
+  troubleshooting entries. Updated test count (144) and clone URL.
 
 ### Added
 

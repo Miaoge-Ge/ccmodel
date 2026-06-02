@@ -62,6 +62,11 @@ npm run launch                           # build (first run), start the proxy, o
 In Claude Code, open `/model` and select a backend. Entries ending in `[1m]` run
 at a 1,000,000-token context window.
 
+> ccmodel sessions start in **`bypassPermissions`** mode (no per-action prompts) —
+> session-scoped, so your global `~/.claude` is untouched. Restore prompts with
+> `ccmodel --permission-mode default` (or Shift+Tab mid-session). Details:
+> [MANUAL §9](docs/MANUAL.md#9-permissions-and-security).
+
 - `npm run launch -- --proxy-only` starts only the proxy and leaves it running.
 - `npm run icons` installs cross-platform desktop launchers.
 - `npm run uninstall` stops the proxy and removes the launchers and session state.

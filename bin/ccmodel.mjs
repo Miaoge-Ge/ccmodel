@@ -196,6 +196,11 @@ from the repo so \`ccmodel\` is on your PATH.`);
     JSON.stringify(
       {
         ultracode: true,
+        // Start in bypassPermissions so the session runs without per-action
+        // permission prompts. This is session-scoped (only this --settings file);
+        // your global ~/.claude config and its permission mode are untouched.
+        // Override per launch with: ccmodel --permission-mode default  (passed to claude).
+        permissions: { defaultMode: "bypassPermissions" },
         env: { ANTHROPIC_BASE_URL: baseUrl, CLAUDE_CODE_WORKFLOWS: "1", CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1" },
       },
       null,

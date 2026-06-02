@@ -14,11 +14,12 @@
 - [6. `[1m]` 100 万上下文保证](#6-1m-100-万上下文保证)
 - [7. 工作机制](#7-工作机制)
 - [8. 环境变量](#8-环境变量)
-- [9. 架构与文件地图](#9-架构与文件地图)
-- [10. 排错](#10-排错)
-- [11. 开发与测试](#11-开发与测试)
-- [12. 给 AI 助手的执行清单](#12-给-ai-助手的执行清单)
-- [13. 卸载](#13-卸载)
+- [9. 权限与安全](#9-权限与安全)
+- [10. 架构与文件地图](#10-架构与文件地图)
+- [11. 排错](#11-排错)
+- [12. 开发与测试](#12-开发与测试)
+- [13. 给 AI 助手的执行清单](#13-给-ai-助手的执行清单)
+- [14. 卸载](#14-卸载)
 
 ---
 
@@ -26,10 +27,12 @@
 
 ccmodel 是一个本地回环代理，挂在 Claude Code 的 `ANTHROPIC_BASE_URL` 上。它不修改你的全局 Claude Code 配置，只在本次会话里做两件事：
 
-1. **让任意模型用上 UltraCode 信封。** 在 API 层面，UltraCode 主要是 `output_config.effort = "xhigh"`、自适应 `thinking`、较大的 `max_tokens`，以及一条系统提醒。ccmodel 会把这组信封加到每个 `/v1/messages` 请求上。
+1. **让任意模型用上 UltraCode 信封。** 在 API 层面，UltraCode 主要是 `output_config.effort = "xhigh"`、自适应 `thinking`、较大的 `max_tokens`，以及一条系统提醒。ccmodel 会把这组信封按后端类型精准注入（只发后端用得上的字段，见 [§7](#7-工作机制)），再转发给你选的后端。
 2. **让 `[1m]` 不再悄悄退回 20 万。** Claude Code 的 `[1m]` 后缀需要配套的 `anthropic-beta: context-1m-2025-08-07` 头部才能真正打开 100 万上下文。某些路径会丢掉这个头部，ccmodel 会在需要时补回。
 
 它支持四类后端：Anthropic 直通、OpenAI 兼容接口、Codex 登录、Cursor Agent。
+
+你现有的 Claude Code 安装完全不受影响：ccmodel 只为它启动的进程设环境变量，并传入一个会话级 `--settings` 文件（启动器也在这里设置 [`bypassPermissions`](#9-权限与安全)），绝不修改 `~/.claude`。
 
 ## 2. 运行要求
 
@@ -213,6 +216,7 @@ Claude Code -> ccmodel server -> envelope/[1m] transform -> Provider -> backend
 - `GET /metrics` 以 Prometheus 文本格式暴露同样的计数（按类型/状态码的请求数、错误数、1M 计数、平均/最大延迟、运行时长）。
 - `GET /v1/models` 合并上游模型与本地配置模型。
 - `POST /v1/messages` 会先注入 UltraCode 信封，再按模型路由到 provider。
+- `POST /v1/messages/count_tokens`（`/context`、`/compact` 会调用）按 `/v1/messages` 同样的方式路由（换后端 id、剥 `[1m]`），但**不注入信封**。真·Claude 仍转发给 Anthropic 拿精确值；第三方后端（OpenAI 兼容/Codex/Cursor）没有这个接口，ccmodel **本地用快速估算**（约 4 字符/token）直接返回，因此 `/context` 秒回、`/compact` 不再对自定义模型报错。
 - OpenAI 兼容后端会做 Anthropic <-> OpenAI 消息和工具调用转换。
 - 空回合会有有限重试；下游断开时会中止上游请求。
 
@@ -245,32 +249,89 @@ Claude Code -> ccmodel server -> envelope/[1m] transform -> Provider -> backend
 | `UC_FORCE_1M` | `0` | 是否对所有请求强制 1M |
 | `UC_EMPTY_RETRY_ATTEMPTS` | `2` | 空回合重试次数 |
 | `UC_EMPTY_RETRY_BACKOFF` | `0.75` | 空回合重试退避秒数 |
+| `UC_MODEL_MAP` | `{}` | 额外的 `id → 后端模型` 覆盖（JSON 映射） |
 | `UC_VERBOSE` | `0` | 输出更详细日志 |
 | `UC_LOG` | 空 | 追加日志文件路径 |
-| `CODEX_HOME` | `~/.codex` | Codex 登录文件目录 |
-| `UC_CODEX_BASE_URL` | ChatGPT Codex API | Codex 上游 |
-| `CURSOR_AGENT_BIN` | PATH / `~/.local/bin` | cursor-agent 路径 |
-| `CURSOR_AGENT_WORKSPACE` | 当前目录 | Cursor Agent 工作目录 |
-| `CURSOR_AGENT_TIMEOUT` | `240` | Cursor Agent 超时秒数 |
+
+优先级：显式环境变量 **高于** `config.jsonc` 里对应的键，后者 **高于** 内置默认值。启动器还会在启动代理前加载仓库根目录下被 gitignore 的 `ccmodel.env`，里面的内容可用于 `${VAR}` 展开，也作为普通环境变量生效。
+
+**Codex（登录方式的 GPT-5.5）：**
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `CODEX_HOME` | `~/.codex` | 存放 `auth.json` 的目录（由 `codex login` 写入） |
+| `UC_CODEX_BASE_URL` | `https://chatgpt.com/backend-api/codex` | Codex Responses API 地址 |
+| `UC_CODEX_EFFORT` | `medium` | 请求未指定时的默认推理强度 |
+| `UC_CODEX_SERVICE_TIER` | 空 | 可选服务档位（如 `priority`） |
+| `UC_CODEX_REFRESH_CMD` | `codex login status` | 尽力而为的 token 刷新命令 |
+| `UC_CODEX_STREAM_IDLE_TIMEOUT` | `150` | 单次读取空闲超时（秒） |
+
+**Cursor（Composer，实验性）：**
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `CURSOR_AGENT_BIN` | PATH / `~/.local/bin` | `cursor-agent` 二进制路径 |
+| `CURSOR_AGENT_WORKSPACE` | 当前目录 | 传给 cursor-agent 的工作目录 |
+| `CURSOR_AGENT_TIMEOUT` | `240` | 单回合放弃前的秒数 |
+| `CURSOR_AGENT_NO_PROXY` | `0` | 设 `1` 从子进程剥掉 `HTTP(S)_PROXY`（修复 TLS 拦截代理下的卡死） |
 
 `ccmodel.env` 会被启动器和 doctor 加载，适合放 `${ENV_VAR}` 所需的密钥。
 
-## 9. 架构与文件地图
+## 9. 权限与安全
+
+### `bypassPermissions` 默认
+
+`ccmodel` / `npm run launch` 启动器会让 Claude Code 以 **`bypassPermissions`** 模式启动，因此本次会话**不会逐个动作弹权限确认**——编辑、shell 命令、工具调用都直接执行，不再询问。这是有意为之：UltraCode 高度依赖 Workflow 工具和长时间自主运行，每个动作都弹窗会不断打断。
+
+它设在启动器通过 `--settings` 传入的**会话级**设置文件里（Windows 为 `%LOCALAPPDATA%\ccmodel\ccmodel_settings.json`，其他系统为 `~/.local/state/ccmodel/ccmodel_settings.json`）：
+
+```jsonc
+{
+  "ultracode": true,
+  "permissions": { "defaultMode": "bypassPermissions" },
+  "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:8141", "CLAUDE_CODE_WORKFLOWS": "1", "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1" }
+}
+```
+
+你的**全局** Claude Code 配置（`~/.claude`）及其权限模式不受影响——这只对通过 ccmodel 启动的会话生效。
+
+**单次启动覆盖**：把想要的模式透传给 `claude` 即可：
+
+```bash
+ccmodel --permission-mode default     # 恢复正常的逐动作确认
+ccmodel --permission-mode acceptEdits # 自动接受编辑，其余仍确认
+ccmodel --permission-mode plan        # 只做计划、不执行
+```
+
+会话中也可以用 **Shift+Tab** 随时切换模式。
+
+> **注意。** `bypassPermissions` 意味着 Claude 可以**不经确认**执行任何工具——包括 shell 命令和写文件。只在你信任的目录下使用。想逐动作确认，就用 `ccmodel --permission-mode default` 启动。
+
+### 凭证处理
+
+- **密钥放在 `config.jsonc` / `ccmodel.env`**，两者都已 gitignore。绝不提交；优先用 `${ENV}` 引用而非内联明文。
+- **仅回环。** 代理默认绑定 `127.0.0.1`。不要暴露到公网接口——它不做任何客户端鉴权。
+- **不交叉转发。** ccmodel 只发所匹配后端配置的 `key`，并在与第三方（OpenAI 兼容）后端通信前剥掉 Claude Code 自带的入站凭证。
+- **日志脱敏。** `Bearer` 令牌、`authorization`/`x-api-key` 的值，以及 `sk-…` 形态的 key，写入日志/stderr 前都会被掩码。但日志仍含提示词/回复内容——请把日志文件当敏感数据。完整策略见 [SECURITY.zh-CN.md](../SECURITY.zh-CN.md)。
+
+## 10. 架构与文件地图
 
 | 文件/目录 | 作用 |
 |-----------|------|
-| `bin/ccmodel.mjs` | 跨平台启动器 |
+| `bin/ccmodel.mjs` | 跨平台启动器（`--version` / `--help`） |
 | `scripts/doctor.ts` | 环境、配置与离线自测检查 |
-| `src/main.ts` | CLI 入口、配置解析、HTTP 服务启动 |
-| `src/server.ts` | HTTP 路由、请求上下文、provider 分发 |
+| `scripts/test.mjs` | 可移植测试运行器（显式枚举文件，跨 Node 版本稳定） |
+| `src/main.ts` | CLI 入口、配置解析、HTTP 服务启动、优雅停机 |
+| `src/server.ts` | HTTP 路由、请求上下文、count_tokens、metrics、provider 分发 |
 | `src/config/` | 配置加载、JSONC 解析、归一化、校验、类型 |
-| `src/core/` | 环境变量、日志、id、运行时类型、PATH 查找 |
-| `src/net/` | HTTP 客户端、请求头处理、SSE 解析、Anthropic 输出 |
+| `src/core/` | 环境变量、脱敏日志、id、运行时类型、PATH 查找、metrics、停机排空 |
+| `src/net/` | HTTP 客户端（keep-alive 连接池）、请求头处理、SSE 解析、Anthropic 输出 |
 | `src/pipeline/` | UltraCode 信封、`[1m]`、模型发现、翻译、重试 |
 | `src/providers/` | Anthropic、OpenAI 兼容、Codex、Cursor provider |
-| `test/proxy.test.ts` | 全离线集成与单元测试 |
+| `test/unit/*.test.ts` | 各模块单测 | 
+| `test/integration.test.ts` | 全离线端到端自测（共享 `test/helpers/harness.ts`） |
 
-## 10. 排错
+## 11. 排错
 
 | 现象 | 处理 |
 |------|------|
@@ -282,23 +343,30 @@ Claude Code -> ccmodel server -> envelope/[1m] transform -> Provider -> backend
 | Codex 不可用 | 先运行 `codex login`；再用 `npm run doctor` 检查 |
 | Cursor 超时 | 确认 `cursor-agent` 已安装并登录；代理环境异常时可尝试 `CURSOR_AGENT_NO_PROXY=1` |
 | 端口被占用 | 修改 `port` 或 `UC_LISTEN_PORT`，或停止旧的代理进程 |
+| `/context` 慢或 `/compact` 报"模型不存在" | 还在跑修复前的旧代理。退出 Claude Code 再重启（`ccmodel` / `npm run launch` 会按改动重新构建）；用 `curl -s localhost:8141/healthz` 看 `version` 是否最新 |
+| `ccmodel: command not found` | 全局命令未链接。在仓库执行一次 `npm link`，并确认 npm 全局 bin 目录（`npm config get prefix`）在 `PATH` 上 |
+| 权限弹窗太多/没有弹窗 | 启动器默认 `bypassPermissions`（不弹窗）。想恢复弹窗：用 `ccmodel --permission-mode default` 启动，或会话中按 **Shift+Tab**。见 [§9](#9-权限与安全) |
 
-## 11. 开发与测试
+## 12. 开发与测试
 
 ```bash
 npm run build
 npm run typecheck
 npm test
+npm run test:coverage
+npm run lint
+npm run format:check
 npm run doctor -- --ci
 ```
 
-测试是全离线的（105 个用例，内置 mock backend），不需要真实 API key 或网络。按关注点拆分在
-`test/unit/*`（配置、`[1m]`、信封、翻译、SSE 解析、HTTP 客户端、重试、Provider、`${ENV}`），
-外加端到端的 `test/integration.test.ts`（共享装置在 `test/helpers/harness.ts`）。
-`npm run test:coverage` 可附带 V8 覆盖率；`npm run lint` / `npm run format:check` 做静态检查。
-CI 在 Node 20/22/24 × Linux/Windows 上运行。
+测试是全离线的（144 个用例，内置 mock backend），不需要真实 API key 或网络。按关注点拆分在
+`test/unit/*`（配置、`[1m]`、信封、翻译、SSE 解析、Anthropic 输出、HTTP 客户端、重试、Provider、
+Codex、count_tokens、metrics、停机、日志脱敏、`${ENV}`），外加端到端的
+`test/integration.test.ts`（count_tokens、413、并发等；共享装置在 `test/helpers/harness.ts`）。
+`npm run test:coverage` 可附带 V8 覆盖率（约 90% 行覆盖）；`npm run lint` / `npm run format:check` 做静态检查。
+CI 在 Node 20/22/24 × Linux/Windows 上运行 lint、格式检查与测试套件。
 
-## 12. 给 AI 助手的执行清单
+## 13. 给 AI 助手的执行清单
 
 当你代用户安装或配置 ccmodel：
 
@@ -310,10 +378,8 @@ CI 在 Node 20/22/24 × Linux/Windows 上运行。
 6. 不要提交 `config.jsonc` 或 `ccmodel.env`。
 7. 修改后运行 `npm run doctor`。
 
-## 13. 卸载
+## 14. 卸载
 
-```bash
-npm run uninstall
-```
-
-这会停止 ccmodel 代理并移除桌面启动器和会话状态。你的全局 Claude Code 配置不会被修改。
+- `npm run uninstall` 停止运行中的代理，并移除桌面启动器和会话状态（跨平台）。你的配置和 Claude Code 都不动。
+- `npm rm -g ccmodel` 移除全局 `ccmodel` 命令（如果你执行过 `npm link` 或 `npm i -g .`）。
+- 想彻底删除：直接删掉仓库文件夹。本项目从不修改你的 `~/.claude` 和凭证。

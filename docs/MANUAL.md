@@ -16,11 +16,12 @@ one-minute overview see the [README](../README.md).
 - [6. The `[1m]` 1M-context guarantee](#6-the-1m-1m-context-guarantee)
 - [7. How it works](#7-how-it-works)
 - [8. Environment variables](#8-environment-variables)
-- [9. Architecture and file map](#9-architecture-and-file-map)
-- [10. Troubleshooting](#10-troubleshooting)
-- [11. Develop and test](#11-develop-and-test)
-- [12. For AI assistants](#12-for-ai-assistants)
-- [13. Uninstall](#13-uninstall)
+- [9. Permissions and security](#9-permissions-and-security)
+- [10. Architecture and file map](#10-architecture-and-file-map)
+- [11. Troubleshooting](#11-troubleshooting)
+- [12. Develop and test](#12-develop-and-test)
+- [13. For AI assistants](#13-for-ai-assistants)
+- [14. Uninstall](#14-uninstall)
 
 ---
 
@@ -33,15 +34,18 @@ changes to your install:
 1. **UltraCode on any model.** At the API boundary "UltraCode" is just an
    *envelope* on a `/v1/messages` request — `output_config.effort = "xhigh"`,
    adaptive `thinking`, a large `max_tokens`, and one system reminder. ccmodel
-   puts that envelope on every request and forwards it to whatever backend you
-   pick from `/model`.
+   applies that envelope (scoped to the fields each backend can actually use, see
+   [§7](#7-how-it-works)) and forwards the request to whatever backend you pick
+   from `/model`.
 2. **A 1M context that doesn't lie.** Claude Code's `[1m]` suffix is supposed to
    give a 1,000,000-token window, but the beta header that unlocks it gets dropped
    in several code paths, so it can silently fall back to 200K. ccmodel re-adds
    the header on every request that needs it — so `[1m]` means 1M.
 
-Your normal Claude Code install is untouched: ccmodel only sets env for the
-launched process and passes a session-scoped `--settings` file.
+Your normal Claude Code install is untouched: ccmodel only sets environment
+variables for the process it launches and passes a session-scoped `--settings`
+file (which is also where the launcher sets [`bypassPermissions`](#9-permissions-and-security)).
+It never edits `~/.claude`.
 
 ## 2. Requirements
 
@@ -58,7 +62,7 @@ build. One launcher (`bin/ccmodel.mjs`) works on **Windows, macOS, Linux, WSL**.
 ## 3. Install and run
 
 ```bash
-git clone <this-repo> ccmodel && cd ccmodel
+git clone git@github.com:Miaoge-Ge/ccmodel.git && cd ccmodel
 npm install        # installs dev deps and builds dist/
 npm run doctor     # validates env + config, runs the offline self-test
 
@@ -351,12 +355,21 @@ can't use.
 | Path | What |
 |------|------|
 | `POST /v1/messages` | the proxied Messages API (envelope + `[1m]` + routing) |
+| `POST /v1/messages/count_tokens` | token counting for `/context` and `/compact` — routed like `/v1/messages` (backend id, stripped `[1m]`) but **without** the envelope; see below |
 | `GET /v1/models` | discovery: upstream models merged with your configured ones |
 | `GET /healthz` (`/health`) | liveness + config summary (version, providers, 1M policy, slots) **and a `metrics` snapshot** |
 | `GET /metrics` | the same counters in Prometheus text format (requests by kind/status, errors, 1M count, latency avg/max, uptime) |
 
 `/healthz` and `/metrics` make the proxy observable instead of a black box; point
 a scraper at `/metrics` or just `curl` it.
+
+**count_tokens.** Claude Code's `/context` and `/compact` call
+`POST /v1/messages/count_tokens`. ccmodel routes it to the right backend with the
+`[1m]` suffix stripped (real Claude still gets an exact count from Anthropic).
+Third-party backends (OpenAI-compatible, Codex, Cursor) don't implement this
+endpoint, so for them ccmodel answers **locally with a fast token estimate**
+(~4 chars/token) instead of forwarding a request that would 404 — which is why
+`/context` is instant and `/compact` no longer errors on a custom model.
 
 ### Gateway discovery (why your models appear in `/model`)
 
@@ -395,10 +408,85 @@ to the `cursor-agent` CLI.
 | `UC_MODEL_MAP` | `{}` | JSON map of extra `id → backend model` overrides. |
 | `UC_LOG` / `UC_VERBOSE` | stderr / `0` | Log file / verbose logging. |
 
-Codex: `CODEX_HOME`, `UC_CODEX_EFFORT`, `UC_CODEX_SERVICE_TIER`, `UC_CODEX_STREAM_IDLE_TIMEOUT`.
-Cursor: `CURSOR_AGENT_BIN`, `CURSOR_AGENT_WORKSPACE`, `CURSOR_AGENT_TIMEOUT`, `CURSOR_AGENT_NO_PROXY`.
+Precedence: an explicit env var **wins over** the matching `config.jsonc` key,
+which wins over the built-in default. The launcher also loads a gitignored
+`ccmodel.env` from the repo root before starting the proxy, so anything there is
+available for `${VAR}` expansion and as a normal env var.
 
-## 9. Architecture and file map
+**Codex (GPT-5.5 via login):**
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `CODEX_HOME` | `~/.codex` | Directory holding `auth.json` (written by `codex login`). |
+| `UC_CODEX_BASE_URL` | `https://chatgpt.com/backend-api/codex` | Codex Responses API base. |
+| `UC_CODEX_EFFORT` | `medium` | Default reasoning effort when the request doesn't set one. |
+| `UC_CODEX_SERVICE_TIER` | — | Optional service tier (e.g. `priority`). |
+| `UC_CODEX_REFRESH_CMD` | `codex login status` | Best-effort token-refresh command. |
+| `UC_CODEX_STREAM_IDLE_TIMEOUT` | `150` | Per-read idle timeout (seconds). |
+
+**Cursor (Composer, experimental):**
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `CURSOR_AGENT_BIN` | PATH / `~/.local/bin` | Path to the `cursor-agent` binary. |
+| `CURSOR_AGENT_WORKSPACE` | current dir | Workspace directory passed to cursor-agent. |
+| `CURSOR_AGENT_TIMEOUT` | `240` | Seconds before giving up on a turn. |
+| `CURSOR_AGENT_NO_PROXY` | `0` | Set `1` to strip `HTTP(S)_PROXY` from the child (fixes hangs behind a TLS-intercepting proxy). |
+
+## 9. Permissions and security
+
+### The `bypassPermissions` default
+
+The `ccmodel` / `npm run launch` launcher starts Claude Code in
+**`bypassPermissions`** mode, so the session runs **without per-action permission
+prompts** — edits, shell commands, and tool calls execute without asking. This is
+deliberate: UltraCode leans heavily on the Workflow tool and long autonomous runs,
+which a prompt on every action would constantly interrupt.
+
+It is set in the **session-scoped** settings file the launcher passes via
+`--settings` (`%LOCALAPPDATA%\ccmodel\ccmodel_settings.json` on Windows,
+`~/.local/state/ccmodel/ccmodel_settings.json` elsewhere):
+
+```jsonc
+{
+  "ultracode": true,
+  "permissions": { "defaultMode": "bypassPermissions" },
+  "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:8141", "CLAUDE_CODE_WORKFLOWS": "1", "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1" }
+}
+```
+
+Your **global** Claude Code config (`~/.claude`) and its permission mode are
+untouched — this only affects sessions launched through ccmodel.
+
+**Override per launch** by passing a different mode straight through to `claude`:
+
+```bash
+ccmodel --permission-mode default     # restore normal per-action prompts
+ccmodel --permission-mode acceptEdits # auto-accept edits, still prompt for the rest
+ccmodel --permission-mode plan        # plan-only, no execution
+```
+
+You can also flip modes mid-session in Claude Code with **Shift+Tab**.
+
+> **Caveat.** `bypassPermissions` means Claude can run any tool — including shell
+> commands and file writes — without confirmation. Only use it in directories you
+> trust. If you'd rather opt in per action, launch with `--permission-mode default`.
+
+### Credential handling
+
+- **Keys live in `config.jsonc` / `ccmodel.env`**, both gitignored. Never commit
+  them; prefer `${ENV}` references over inline keys.
+- **Loopback only.** The proxy binds `127.0.0.1` by default. Do not expose it on a
+  public interface — it performs no client authentication.
+- **No cross-forwarding.** ccmodel sends only the configured `key` for the matched
+  backend, and strips Claude Code's own inbound credential before talking to a
+  third-party (OpenAI-compatible) backend.
+- **Redacted logs.** `Bearer` tokens, `authorization`/`x-api-key` values, and
+  `sk-…` key shapes are masked before anything is written to the log file or
+  stderr. Logs still contain prompt/response content — treat the log file as
+  sensitive. Full policy: [SECURITY.md](../SECURITY.md).
+
+## 10. Architecture and file map
 
 ```
 Claude Code → server.ts (thin HTTP) → envelope/[1m] transform → Provider (by backend kind)
@@ -436,7 +524,7 @@ disconnect aborts the upstream call).
 | `bin/ccmodel.mjs` | the cross-platform launcher |
 | `scripts/{install-icons,uninstall}.mjs` | desktop entries + cleanup |
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 Run the doctor first — it catches most problems and prints the fix:
 `npm run doctor`. Proxy log: `%LOCALAPPDATA%\ccmodel\proxy.log` (Windows) or
@@ -455,11 +543,14 @@ Run the doctor first — it catches most problems and prints the fix:
 | **Occasional empty reply** | Some upstreams return an empty turn; the proxy auto-retries (default 2). Tune `UC_EMPTY_RETRY_ATTEMPTS` / `UC_EMPTY_RETRY_BACKOFF`. |
 | **Codex 401 / "run codex login"** | Your ChatGPT/Codex token expired — run `codex login` again. |
 | **"Proxy did not become healthy"** | Port in use — set `port`/`UC_LISTEN_PORT`, or stop the stale `node … main.js`. Or the build is missing — `npm install && npm run build`. |
+| **`/context` slow or `/compact` says "model not found"** | An old proxy from before this fix is still running. Exit Claude Code and relaunch (`ccmodel` / `npm run launch` rebuilds on change); confirm with `curl -s localhost:8141/healthz` that `version` is current. |
+| **`ccmodel: command not found`** | The global command isn't linked. Run `npm link` once from the repo, and make sure the npm global bin dir (`npm config get prefix`) is on your `PATH`. |
+| **Too many / no permission prompts** | The launcher defaults to `bypassPermissions` (no prompts). Want prompts back? Launch with `ccmodel --permission-mode default`, or press **Shift+Tab** mid-session. See [§9](#9-permissions-and-security). |
 | **Did I break my normal Claude Code?** | No — ccmodel never edits `~/.claude`; use the **Claude Code (Normal)** icon or `npm run uninstall`. |
 
 If `npm test` passes, the code is fine and the problem is configuration/credentials.
 
-## 11. Develop and test
+## 12. Develop and test
 
 ```bash
 npm run build         # tsc -> dist/
@@ -470,7 +561,7 @@ npm run lint          # eslint . (typescript-eslint)
 npm run format:check  # prettier --check .
 ```
 
-The self-test (105 cases) is fully offline (an in-process mock backend) and is
+The self-test (144 cases) is fully offline (an in-process mock backend) and is
 split by concern:
 
 | File | Covers |
@@ -481,15 +572,21 @@ split by concern:
 | `test/unit/translate.test.ts` | Anthropic⇄OpenAI tools + the strict-backend tool-adjacency fix |
 | `test/unit/discovery.test.ts` | `/v1/models` merge |
 | `test/unit/sse.test.ts` | OpenAI SSE + JSON → internal events |
-| `test/unit/http.test.ts` | the HTTP client (status passthrough, streaming, abort) + header helpers |
+| `test/unit/emit.test.ts` | the Anthropic SSE + JSON emitters |
+| `test/unit/http.test.ts` | the HTTP client (status passthrough, streaming, abort, body cap) + header helpers |
 | `test/unit/retry.test.ts` | empty-turn retry + retryable-status policy |
 | `test/unit/providers.test.ts` | the provider registry + cursor stream parsing |
+| `test/unit/codexClient.test.ts` | Codex request-shaping + the Responses SSE parser + JWT helpers |
+| `test/unit/counttokens.test.ts` | the local count_tokens estimator |
+| `test/unit/metrics.test.ts` | the metrics counters + Prometheus rendering |
+| `test/unit/shutdown.test.ts` | graceful connection draining |
+| `test/unit/log.test.ts` | log secret-redaction |
 | `test/unit/env.test.ts` | `${VAR}` expansion |
-| `test/integration.test.ts` | end-to-end proxy over a mock backend (shared `test/helpers/harness.ts`) |
+| `test/integration.test.ts` | end-to-end proxy over a mock backend (count_tokens, 413, concurrency, …; shared `test/helpers/harness.ts`) |
 
 CI runs it on Node 20/22/24 × Linux/Windows, plus lint + format checks.
 
-## 12. For AI assistants
+## 13. For AI assistants
 
 If you're helping a user set ccmodel up: (0) the end state is they launch
 **CCModel (All Models)**, open `/model`, and pick any configured backend including
@@ -505,9 +602,11 @@ exit 0. (5) `npm run launch`. (6) Verify in
 `[1m]` pick logs `want1m=true`. **Never** commit `config.jsonc`/`ccmodel.env`,
 never touch global `~/.claude`, and never paper over a failing `npm test`.
 
-## 13. Uninstall
+## 14. Uninstall
 
 - `npm run uninstall` stops a running proxy and removes the desktop launchers +
   session state (cross-platform). Your config and Claude Code are left alone.
+- `npm rm -g ccmodel` removes the global `ccmodel` command (if you ran `npm link`
+  or `npm i -g .`).
 - To remove everything, delete the repo folder. Your `~/.claude` and credentials
   are never modified by this project.
