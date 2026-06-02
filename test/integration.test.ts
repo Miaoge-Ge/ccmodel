@@ -113,6 +113,24 @@ test("openai_compat with no key sends no Authorization (no fake Bearer)", async 
   assert.equal(h.state.seenOaiHeaders["authorization"], undefined, "no Authorization header when no key is configured");
 });
 
+test("handles many concurrent requests without corruption", async () => {
+  // Mix passthrough (JSON) and openai_compat (stateful translation + streaming)
+  // so a shared-state bug across the translation maps would surface.
+  const N = 40;
+  const statuses = await Promise.all(
+    Array.from({ length: N }, (_, i) =>
+      h
+        .post({
+          model: i % 2 ? "claude-opus-4-8" : "claude-mock-model",
+          max_tokens: 50,
+          messages: [{ role: "user", content: `concurrent ${i}` }],
+        })
+        .then((r) => r.status),
+    ),
+  );
+  assert.equal(statuses.filter((s) => s === 200).length, N, "every concurrent request returned 200");
+});
+
 test("an oversized request body is rejected with 413", async () => {
   const ctx = { ...buildCtx({ models: [] }, "http://127.0.0.1:1"), maxBodyBytes: 50 };
   const server = createServer(ctx);
